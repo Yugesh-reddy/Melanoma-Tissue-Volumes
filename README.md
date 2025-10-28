@@ -1,4 +1,4 @@
-#  SSGAT: Spatial Feature Graph Attention Network
+Spatial Feature Graph Attention Network
 
 > **Advanced spatial biology analysis using Graph Attention Networks for cellular interaction discovery**
 
@@ -86,3 +86,4 @@ SSGAT/
 ---
 
 ** Built for spatial biology research |  Deployed on GitHub Pages**
+
