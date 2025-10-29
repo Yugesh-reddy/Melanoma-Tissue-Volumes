@@ -1,4 +1,13 @@
-Project Description
-Highly multiplexed tissue imaging techniques, such as Cyclic Immunofluorescence (CycIF), enable the measurement of dozens of biomarkers at single-cell resolution within large 2D and 3D tissue samples. In metastatic melanoma, researchers have identified “immune niches,” where immune cells interact with tumor cells and with one another in ways that affect disease progression and therapy response. While volumetric imaging reveals these complex microenvironments, current methods for exploring such datasets are limited by scale (hundreds of gigabytes), complexity (tens of biomarkers), and lack of interactive visualization tools.
-This project will develop a visual analytics system that enables researchers to identify, visualize, and analyze immune niches within large volumes of melanoma tissue. The system will facilitate global and local exploration, highlighting regions of interest (ROIs) where immune–tumor interactions occur, and provide local support for single-cell inspection with biomarker-level detail. Our solution will combine novel visual encodings for biomarker combinations, interactive volumetric visualization, and ROI abstraction techniques, thereby extending beyond the capabilities of existing tools such as Vitessce or Three.js.
-The system will be developed in collaboration with Prof. Lei Duan, who provides domain expertise.
+# Three.js Test File
+
+This is a simple test file with a green rotating cube using Three.js.
+
+## How to Run
+
+```bash
+npm start
+```
+
+Then open your browser and go to `http://localhost:3000`
+
+You should see a green cube rotating on the page.
