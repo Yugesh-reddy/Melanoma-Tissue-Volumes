@@ -19,6 +19,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
         camera.position.z = 5;
 
+        // Color array for different colors
+        const colors = [
+            0x00ff00, // Green
+            0xff0000, // Red
+            0x0000ff, // Blue
+            0xffff00, // Yellow
+            0xff00ff, // Magenta
+            0x00ffff, // Cyan
+            0xffa500, // Orange
+            0x800080  // Purple
+        ];
+        let colorIndex = 0;
+
+        // Change color button functionality
+        const changeColorBtn = document.getElementById('changeColorBtn');
+        changeColorBtn.addEventListener('click', function() {
+            colorIndex = (colorIndex + 1) % colors.length;
+            cube.material.color.setHex(colors[colorIndex]);
+            console.log('Color changed to:', colors[colorIndex].toString(16));
+        });
+
         function animate() {
             cube.rotation.x += 0.01;
             cube.rotation.y += 0.01;
