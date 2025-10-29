@@ -4,35 +4,68 @@
 - Hossein Fathollahian
 - Yugesh Spinidi
 
-This is a Three.js test file with a green rotating cube for the Melanoma Tissue Volumes project.
+This is a React + Three.js test application with an interactive rotating cube for the Melanoma Tissue Volumes project.
+
+## Technology Stack
+
+- **React 18** - Frontend framework for component-based UI
+- **Three.js** - 3D graphics library for WebGL rendering
+- **Vite** - Fast build tool and development server
+- **JavaScript ES6+** - Modern JavaScript features
 
 ## How to Run
 
+### Development Mode (Recommended)
 1. **Install dependencies:**
 ```bash
 npm install
 ```
 
-2. **Start the server:**
+2. **Start React development server:**
 ```bash
-npm start
+npm run dev
 ```
 
 3. **Open your browser and go to:** `http://localhost:3000`
 
-You should see a green cube rotating on the page.
+### Production Mode
+```bash
+npm run build
+npm run preview
+```
+
+### Alternative (Simple Server)
+```bash
+npm start
+```
+
+## Features
+
+### Interactive 3D Cube
+- **Rotating cube** - Continuously spins on X and Y axes
+- **Color changing** - Click button to cycle through 8 colors
+- **React state management** - Color changes managed with React hooks
+- **Responsive design** - Adapts to window size
+
+### Available Colors
+- Green, Red, Blue, Yellow, Magenta, Cyan, Orange, Purple
 
 ## How It Works
 
-### Three.js
-Three.js is a JavaScript library that makes it easy to create 3D graphics in web browsers. It uses WebGL (Web Graphics Library) to render 3D scenes.
+### React Components
+- **App.jsx** - Main component containing Three.js scene
+- **main.jsx** - React entry point and root rendering
 
-### What This Test Does
-- **Creates a 3D scene** - A virtual 3D space where objects can exist
-- **Adds a camera** - Like your eye, it determines what you see in the 3D world
-- **Creates a green cube** - A 3D box geometry with green material
-- **Rotates the cube** - The cube spins continuously on both X and Y axes
-- **Renders the scene** - Displays the 3D scene on your screen
 
 ### Why We're Testing This
-This rotating cube test helps us verify that Three.js is working properly before we build more complex 3D visualizations for melanoma tissue volume analysis. It's a simple way to make sure our 3D rendering pipeline is functioning correctly.
+This React + Three.js test helps us verify that our 3D rendering 
+## Project Structure
+
+```
+src/
+├── App.jsx          # Main React component with Three.js
+├── main.jsx         # React entry point
+index.html           # HTML template
+vite.config.js       # Vite configuration
+package.json         # Dependencies and scripts
+```
