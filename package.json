@@ -1,0 +1,12 @@
+{
+  "name": "threejs-green-ball",
+  "version": "1.0.0",
+  "description": "Simple green ball with Three.js",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server -p 3000 -o"
+  },
+  "keywords": ["threejs", "3d", "ball"],
+  "author": "",
+  "license": "MIT"
+}
