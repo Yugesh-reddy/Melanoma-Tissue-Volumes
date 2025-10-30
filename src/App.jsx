@@ -92,12 +92,12 @@ function App() {
   }, [currentColor]);
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
+    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
       <div style={{
         position: 'absolute',
         top: '20px',
         left: '20px',
-        zIndex: 100
+        zIndex: 1000
       }}>
         <button
           onClick={changeColor}
@@ -109,7 +109,8 @@ function App() {
             borderRadius: '5px',
             cursor: 'pointer',
             fontSize: '16px',
-            marginRight: '10px'
+            marginRight: '10px',
+            zIndex: 1000
           }}
           onMouseOver={(e) => e.target.style.background = '#45a049'}
           onMouseOut={(e) => e.target.style.background = '#4CAF50'}
@@ -117,7 +118,7 @@ function App() {
           Change Color
         </button>
       </div>
-      <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={mountRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
     </div>
   );
 }
