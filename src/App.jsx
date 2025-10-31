@@ -1,124 +1,60 @@
-import React, { useRef, useEffect, useState } from 'react';
-import * as THREE from 'three';
+import React from 'react';
+import Title from './components/Title';
+import ChannelSelection from './components/ChannelSelection';
+import Region_Selection from './components/Region_Selection';
+import Main_View from './components/Main_View';
+import Local_View from './components/Local_View';
+import Graph_Pannel from './components/Graph_Pannel';
+import Direction_view from './components/Direction_view';
 
 function App() {
-  const mountRef = useRef(null);
-  const sceneRef = useRef(null);
-  const rendererRef = useRef(null);
-  const cubeRef = useRef(null);
-  const animationRef = useRef(null);
-  
-  const [currentColor, setCurrentColor] = useState(0x00ff00);
-  
-  const colors = [
-    0x00ff00, // Green
-    0xff0000, // Red
-    0x0000ff, // Blue
-    0xffff00, // Yellow
-    0xff00ff, // Magenta
-    0x00ffff, // Cyan
-    0xffa500, // Orange
-    0x800080  // Purple
-  ];
-
-  const changeColor = () => {
-    const currentIndex = colors.indexOf(currentColor);
-    const nextIndex = (currentIndex + 1) % colors.length;
-    const newColor = colors[nextIndex];
-    setCurrentColor(newColor);
-    
-    if (cubeRef.current) {
-      cubeRef.current.material.color.setHex(newColor);
-    }
-    console.log('Color changed to:', newColor.toString(16));
-  };
-
-  useEffect(() => {
-    if (!mountRef.current) return;
-
-    // Scene setup
-    const scene = new THREE.Scene();
-    sceneRef.current = scene;
-
-    // Camera setup
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    camera.position.z = 5;
-
-    // Renderer setup
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    mountRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
-
-    // Cube setup
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshBasicMaterial({ color: currentColor });
-    const cube = new THREE.Mesh(geometry, material);
-    scene.add(cube);
-    cubeRef.current = cube;
-
-    // Animation loop
-    const animate = () => {
-      if (cubeRef.current) {
-        cubeRef.current.rotation.x += 0.01;
-        cubeRef.current.rotation.y += 0.01;
-      }
-      renderer.render(scene, camera);
-      animationRef.current = requestAnimationFrame(animate);
-    };
-    animate();
-
-    // Cleanup
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-      if (mountRef.current && rendererRef.current) {
-        mountRef.current.removeChild(rendererRef.current.domElement);
-      }
-    };
-  }, []);
-
-  // Update cube color when currentColor changes
-  useEffect(() => {
-    if (cubeRef.current) {
-      cubeRef.current.material.color.setHex(currentColor);
-    }
-  }, [currentColor]);
-
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#000000', position: 'fixed', top: 0, left: 0 }}>
+      {/* Title - 9.5% height, 100% width */}
+      <Title softwareName="Melanoma Tissue Volumes" />
+
+      {/* Main Content Area - 90.5% height, 100% width */}
       <div style={{
-        position: 'absolute',
-        top: '20px',
-        left: '20px',
-        zIndex: 1000
+        flex: '100%',
+        width: '100%',
+        display: 'flex'
       }}>
-        <button
-          onClick={changeColor}
-          style={{
-            background: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            padding: '10px 20px',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            fontSize: '16px',
-            marginRight: '10px',
-            zIndex: 1000
-          }}
-          onMouseOver={(e) => e.target.style.background = '#45a049'}
-          onMouseOut={(e) => e.target.style.background = '#4CAF50'}
-        >
-          Change Color
-        </button>
+        {/* Left Sidebar - 100% of main content height, 25% width */}
+        <div style={{ width: '25%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {/* Channel Selection - 40% of sidebar height */}
+          <div style={{ height: '45%' }}>
+            <ChannelSelection />
+          </div>
+          {/* Region Selection - 55% of sidebar height */}
+          <div style={{ height: '55%' }}>
+            <Region_Selection />
+          </div>
+        </div>
+
+        {/* Right Section - 100% of main content height, 75% width */}
+        <div style={{ width: '75%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {/* Main View - 75% height */}
+          <div style={{ height: '75%' }}>
+            <Main_View />
+          </div>
+
+          {/* Bottom panels - 25% height */}
+          <div style={{ height: '25%', display: 'flex' }}>
+            {/* Local View - 25% width */}
+            <div style={{ width: '33.3%', height: '100%' }}>
+              <Local_View />
+            </div>
+            {/* Graph Panel - 25% width */}
+            <div style={{ width: '33.3%', height: '100%' }}>
+              <Graph_Pannel />
+            </div>
+            {/* Direction View - 25% width */}
+            <div style={{ width: '33.3%', height: '100%' }}>
+              <Direction_view />
+            </div>
+          </div>
+        </div>
       </div>
-      <div ref={mountRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
     </div>
   );
 }
