@@ -1,0 +1,13 @@
+{
+  "shape": [
+    49,
+    172,
+    341
+  ],
+  "dataRange": [
+    0,
+    33908
+  ],
+  "downsampleFactor": 4,
+  "channel": 0
+}
