@@ -3,7 +3,7 @@ node_modules/
 
 # Data folder (exclude from Git - too large)
 Data/
-
+biomedvis-high-res/
 # Build output
 dist/
 build/
