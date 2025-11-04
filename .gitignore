@@ -7,7 +7,7 @@ biomedvis-high-res/
 # Build output
 dist/
 build/
-
+visualization_data/
 # IDE
 .vscode/
 .idea/
