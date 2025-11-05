@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Title from './components/Title';
 import ChannelSelection from './components/ChannelSelection';
 import Region_Selection from './components/Region_Selection';
@@ -7,7 +7,40 @@ import Local_View from './components/Local_View';
 import Graph_Pannel from './components/Graph_Pannel';
 import Direction_view from './components/Direction_view';
 
+// Helper function to convert RGB to hex
+const rgbToHex = (r, g, b) => {
+  return '#' + [r, g, b].map(x => {
+    const hex = x.toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+};
+
 function App() {
+  const [channels, setChannels] = useState([
+    {
+      id: 0,
+      channelIndex: 19,
+      color: rgbToHex(0, 255, 0), // Green [0, 255, 0]
+      thresholdMin: 300,
+      thresholdMax: 20000,
+      opacity: 1.0,
+      visible: true
+    },
+    {
+      id: 1,
+      channelIndex: 27,
+      color: rgbToHex(255, 255, 0), // Yellow [255, 255, 0]
+      thresholdMin: 1000,
+      thresholdMax: 7000,
+      opacity: 1.0,
+      visible: true
+    }
+  ]);
+
+  const handleChannelsChange = (updatedChannels) => {
+    setChannels(updatedChannels);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#000000', position: 'fixed', top: 0, left: 0 }}>
       {/* Title - 9.5% height, 100% width */}
@@ -23,7 +56,7 @@ function App() {
         <div style={{ width: '25%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Channel Selection - 40% of sidebar height */}
           <div style={{ height: '45%' }}>
-            <ChannelSelection />
+            <ChannelSelection onChannelsChange={handleChannelsChange} />
           </div>
           {/* Region Selection - 55% of sidebar height */}
           <div style={{ height: '55%' }}>
@@ -35,7 +68,7 @@ function App() {
         <div style={{ width: '75%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Main View - 75% height */}
           <div style={{ height: '75%' }}>
-            <Main_View />
+            <Main_View channels={channels} />
           </div>
 
           {/* Bottom panels - 25% height */}
