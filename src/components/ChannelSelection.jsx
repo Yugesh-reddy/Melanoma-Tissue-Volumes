@@ -216,7 +216,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
       thresholdMax: defaultMax,
       dataRange: dataRange,
       opacity: 1.0,
-      visible: true
+      visible: false  // Start as unchecked - user will check when ready to visualize
     };
     const updatedChannels = [...channels, newChannel];
     setChannels(updatedChannels);
