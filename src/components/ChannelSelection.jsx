@@ -27,7 +27,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
     {
       id: 1,
       channelIndex: 27,
-      color: rgbToHex(255, 255, 0), // Yellow [255, 255, 0]
+      color: rgbToHex(0, 0, 255), // Blue [0, 0, 255]
       thresholdMin: 1000,
       thresholdMax: 7000,
       dataRange: [0, 65535], // Default, will be updated from metadata
