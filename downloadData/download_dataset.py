@@ -28,9 +28,13 @@ def download_biomedvis_dataset():
     print("\n🚀 Starting download...")
     
     try:
-        # Use AWS CLI to sync the data
+        # Use AWS CLI to sync the data - find aws in virtual environment or system
+        import sys
+        venv_aws = os.path.join(os.path.dirname(sys.executable), "aws")
+        aws_cmd = venv_aws if os.path.exists(venv_aws) else "aws"
+        
         cmd = [
-            "python", "-m", "awscli", "s3", "sync", 
+            aws_cmd, "s3", "sync", 
             bucket_path, local_path, "--no-sign-request"
         ]
         
