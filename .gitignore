@@ -4,6 +4,10 @@ node_modules/
 # Data folder (exclude from Git - too large)
 Data/
 
+# BiomedVis datasets (exclude from Git - too large)
+downloadData/biomedvis-24gb/
+downloadData/biomedvis-highres/
+
 # Build output
 dist/
 build/
