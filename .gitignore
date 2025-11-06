@@ -7,11 +7,13 @@ Data/
 # BiomedVis datasets (exclude from Git - too large)
 downloadData/biomedvis-24gb/
 downloadData/biomedvis-highres/
+biomedvis-high-res/
 
 # Build output
 dist/
 build/
-
+visualization_data/
+D:\S_UIC Fall 2025\CS529\final project\BioProject\visualization_data/
 # IDE
 .vscode/
 .idea/
