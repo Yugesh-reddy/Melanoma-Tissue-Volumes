@@ -195,7 +195,7 @@ const Main_View = ({ channels = [] }) => {
     
     console.log(`Channel ${channelConfig.channelIndex}: Created ${pointCount} points with sampling=${sampling}`);
 
-    // Create sphere geometry
+    // Create voxel geometry
     const numPoints = points.length / 3;
     if (numPoints === 0) {
       console.warn(`Channel ${channelConfig.channelIndex}: No points pass the threshold range [${minThreshold.toLocaleString()}, ${maxThreshold.toLocaleString()}]`);
@@ -206,8 +206,8 @@ const Main_View = ({ channels = [] }) => {
     
     console.log(`Channel ${channelConfig.channelIndex}: Creating ${numPoints} points with fixed color ${color} and variable opacity`);
 
-    const sphereGeometry = new THREE.SphereGeometry(pointSize, 8, 8);
-    const instancedMesh = new THREE.InstancedMesh(sphereGeometry, null, numPoints);
+    const voxelGeometry = new THREE.BoxGeometry(pointSize, pointSize, pointSize);
+    const instancedMesh = new THREE.InstancedMesh(voxelGeometry, null, numPoints);
 
     // Create opacity attribute for per-instance opacity
     const opacityArray = new Float32Array(numPoints);
