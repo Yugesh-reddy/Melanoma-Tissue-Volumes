@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 
 const Local_View = ({ selectedRegionData }) => {
@@ -11,12 +11,19 @@ const Local_View = ({ selectedRegionData }) => {
   const boundingBoxRef = useRef(null);
   const axesHelperRef = useRef(null);
   
+  // State for UI display
+  const [cellCount, setCellCount] = useState(0);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  
   // Camera state for local view (super zoomed)
   const cameraStateRef = useRef({
     rotation: { x: 0.5, y: 0.5 },
     distance: 0.3, // Much closer for super zoom
     panOffset: { x: 0, y: 0, z: 0 }
   });
+  
+  // Store initial camera state for reset
+  const initialCameraStateRef = useRef(null);
 
   // Load channel data (same as Main_View)
   const loadChannelData = async (channelIndex) => {
@@ -57,7 +64,9 @@ const Local_View = ({ selectedRegionData }) => {
   };
 
   // Create voxel visualization for a channel region (similar to Main_View but for selected region)
-  const createRegionVisualization = (channelData, channelConfig, bounds, scene) => {
+  // Uses scaling factors from Main_View to maintain exact 3D positions
+  // centerOffset: offset to center geometry at origin (0,0,0) without scaling
+  const createRegionVisualization = (channelData, channelConfig, bounds, scene, scalingFactors = null, centerOffset = null) => {
     const { data, metadata } = channelData;
     const { color, thresholdMin, thresholdMax } = channelConfig;
     const shape = metadata.shape;
@@ -92,13 +101,25 @@ const Local_View = ({ selectedRegionData }) => {
     const opacities = [];
     const baseOpacityFloor = 0.35;
     const opacityBoost = 1.3;
-    const maxDim = Math.max(zSize, ySize, xSize);
-    const scaleX = xSize / maxDim;
-    const scaleY = ySize / maxDim;
-    const scaleZ = (zSize / maxDim) / 4;
+    
+    // Use scaling factors from Main_View if provided, otherwise calculate them
+    // This ensures exact 3D position matching between Main_View and Local_View
+    let scaleX, scaleY, scaleZ;
+    if (scalingFactors) {
+      scaleX = scalingFactors.scaleX;
+      scaleY = scalingFactors.scaleY;
+      scaleZ = scalingFactors.scaleZ;
+      console.log(`Local_View: Using scaling factors from Main_View: scaleX=${scaleX}, scaleY=${scaleY}, scaleZ=${scaleZ}`);
+    } else {
+      const maxDim = Math.max(zSize, ySize, xSize);
+      scaleX = xSize / maxDim;
+      scaleY = ySize / maxDim;
+      scaleZ = (zSize / maxDim) / 4;
+      console.log(`Local_View: Calculated scaling factors: scaleX=${scaleX}, scaleY=${scaleY}, scaleZ=${scaleZ}`);
+    }
 
     // Extract region within bounds (use sampling=1 for maximum detail in local view)
-    const sampling = 1;
+    const voxelSampling = 1;
     const voxelMinX = Math.max(0, Math.floor(bounds.min.x));
     const voxelMaxX = Math.min(xSize - 1, Math.ceil(bounds.max.x));
     const voxelMinY = Math.max(0, Math.floor(bounds.min.y));
@@ -117,9 +138,9 @@ const Local_View = ({ selectedRegionData }) => {
     let pointCount = 0;
     let thresholdPassCount = 0;
 
-    for (let z = voxelMinZ; z <= voxelMaxZ; z += sampling) {
-      for (let y = voxelMinY; y <= voxelMaxY; y += sampling) {
-        for (let x = voxelMinX; x <= voxelMaxX; x += sampling) {
+    for (let z = voxelMinZ; z <= voxelMaxZ; z += voxelSampling) {
+      for (let y = voxelMinY; y <= voxelMaxY; y += voxelSampling) {
+        for (let x = voxelMinX; x <= voxelMaxX; x += voxelSampling) {
           const idx = z * ySize * xSize + y * xSize + x;
           if (idx >= data.length) {
             console.warn(`Local_View: Index ${idx} out of bounds (data length: ${data.length})`);
@@ -131,9 +152,20 @@ const Local_View = ({ selectedRegionData }) => {
 
           if (actualValue >= minThreshold && actualValue <= maxThreshold) {
             thresholdPassCount++;
-            const nx = ((x / xSize) * 2 - 1) * scaleX;
-            const ny = ((y / ySize) * 2 - 1) * scaleY;
-            const nz = ((z / zSize) * 2 - 1) * scaleZ;
+            // Use EXACT same coordinate calculation as Main_View
+            // This ensures 1:1 spatial position matching
+            let nx = ((x / xSize) * 2 - 1) * scaleX;
+            let ny = ((y / ySize) * 2 - 1) * scaleY;
+            let nz = ((z / zSize) * 2 - 1) * scaleZ;
+            
+            // Apply center offset to center geometry at origin (0,0,0) without scaling
+            // This maintains exact spatial relationships while centering the view
+            if (centerOffset) {
+              nx -= centerOffset.x;
+              ny -= centerOffset.y;
+              nz -= centerOffset.z;
+            }
+            
             points.push(nx, ny, nz);
 
             const pointOpacity = dataMax > 0 ? actualValue / dataMax : 0;
@@ -154,21 +186,16 @@ const Local_View = ({ selectedRegionData }) => {
       return null;
     }
 
-    // Calculate voxel step size - make them larger for better visibility in local view
-    // Use the actual bounds size to determine appropriate voxel size
-    const boundsWidth = bounds.max.x - bounds.min.x + 1;
-    const boundsHeight = bounds.max.y - bounds.min.y + 1;
-    const boundsDepth = bounds.max.z - bounds.min.z + 1;
-    const maxBoundsDim = Math.max(boundsWidth, boundsHeight, boundsDepth);
+    // CRITICAL: Use EXACT same voxel step size calculation as Main_View
+    // This ensures 1:1 spatial scale matching - NO additional scaling!
+    // Main_View uses: stepX = (2 / xSize) * scaleX * Math.max(1, sampling)
+    // voxelSampling is already declared above (always = 1 for full resolution)
+    const stepX = (2 / xSize) * scaleX * Math.max(1, voxelSampling);
+    const stepY = (2 / ySize) * scaleY * Math.max(1, voxelSampling);
+    const stepZ = (2 / zSize) * scaleZ * Math.max(1, voxelSampling);
     
-    // Make voxels larger - scale based on bounds size for better visibility
-    // For small regions, make voxels bigger; for large regions, keep them proportional
-    const baseVoxelScale = Math.max(2.0, maxBoundsDim / 20); // Minimum 2x scale, larger for smaller regions
-    const stepX = ((2 / xSize) * scaleX) * baseVoxelScale;
-    const stepY = ((2 / ySize) * scaleY) * baseVoxelScale;
-    const stepZ = ((2 / zSize) * scaleZ) * baseVoxelScale;
-    
-    console.log(`Local_View: Voxel step sizes: X=${stepX.toFixed(6)}, Y=${stepY.toFixed(6)}, Z=${stepZ.toFixed(6)}, scaleFactor=${baseVoxelScale.toFixed(2)}`);
+    console.log(`Local_View: Voxel step sizes (1:1 with Main_View): X=${stepX.toFixed(6)}, Y=${stepY.toFixed(6)}, Z=${stepZ.toFixed(6)}`);
+    console.log(`Local_View: Using sampling=${voxelSampling} (full resolution)`);
 
     const baseGeometry = new THREE.BoxGeometry(stepX, stepY, stepZ);
     const geometry = new THREE.InstancedBufferGeometry();
@@ -330,7 +357,7 @@ const Local_View = ({ selectedRegionData }) => {
       axesHelperRef.current = null;
     }
 
-    const { channels, bounds } = selectedData;
+    const { channels, bounds, scaling } = selectedData;
     if (channels.length === 0) {
       console.log('Local_View: No channels in selection');
       return;
@@ -346,28 +373,39 @@ const Local_View = ({ selectedRegionData }) => {
 
     const { metadata: firstMetadata } = firstChannelData;
     const [zSize, ySize, xSize] = firstMetadata.shape;
-    const maxDimData = Math.max(zSize, ySize, xSize);
-    const scaleXData = xSize / maxDimData;
-    const scaleYData = ySize / maxDimData;
-    const scaleZData = (zSize / maxDimData) / 4;
+    
+    // Use scaling factors from Main_View if available to maintain exact 3D positions
+    let scaleXData, scaleYData, scaleZData;
+    if (scaling) {
+      scaleXData = scaling.scaleX;
+      scaleYData = scaling.scaleY;
+      scaleZData = scaling.scaleZ;
+      console.log('Local_View: Using scaling factors from Main_View for bounding box');
+    } else {
+      const maxDimData = Math.max(zSize, ySize, xSize);
+      scaleXData = xSize / maxDimData;
+      scaleYData = ySize / maxDimData;
+      scaleZData = (zSize / maxDimData) / 4;
+      console.log('Local_View: Calculated scaling factors for bounding box');
+    }
 
     // Calculate bounding box size in normalized coordinates
     const boundsWidth = bounds.max.x - bounds.min.x + 1;
     const boundsHeight = bounds.max.y - bounds.min.y + 1;
     const boundsDepth = bounds.max.z - bounds.min.z + 1;
     
-    // Calculate center in normalized coordinates
-    const centerX = (bounds.min.x + bounds.max.x) / 2;
-    const centerY = (bounds.min.y + bounds.max.y) / 2;
-    const centerZ = (bounds.min.z + bounds.max.z) / 2;
+    // Calculate center in normalized coordinates (same as Main_View)
+    const boundsCenterX = (bounds.min.x + bounds.max.x) / 2;
+    const boundsCenterY = (bounds.min.y + bounds.max.y) / 2;
+    const boundsCenterZ = (bounds.min.z + bounds.max.z) / 2;
     
     const boxCenter = {
-      x: ((centerX / xSize) * 2 - 1) * scaleXData,
-      y: ((centerY / ySize) * 2 - 1) * scaleYData,
-      z: ((centerZ / zSize) * 2 - 1) * scaleZData
+      x: ((boundsCenterX / xSize) * 2 - 1) * scaleXData,
+      y: ((boundsCenterY / ySize) * 2 - 1) * scaleYData,
+      z: ((boundsCenterZ / zSize) * 2 - 1) * scaleZData
     };
     
-    // Calculate bounding box size in normalized space
+    // Calculate bounding box size in normalized space (exact same calculation as Main_View)
     const boxSize = {
       x: (boundsWidth / xSize) * 2 * scaleXData,
       y: (boundsHeight / ySize) * 2 * scaleYData,
@@ -376,6 +414,7 @@ const Local_View = ({ selectedRegionData }) => {
 
     console.log('Local_View: Bounding box center', boxCenter, 'size', boxSize);
     console.log('Local_View: Bounds dimensions (voxels)', boundsWidth, boundsHeight, boundsDepth);
+    console.log('Local_View: Using exact same scaling as Main_View - maintaining 1:1 spatial scale');
 
     const boxGeometry = new THREE.BoxGeometry(boxSize.x, boxSize.y, boxSize.z);
     const boxEdges = new THREE.EdgesGeometry(boxGeometry);
@@ -386,7 +425,20 @@ const Local_View = ({ selectedRegionData }) => {
     boundingBoxRef.current = boxWireframe;
 
     // Create voxel meshes for each channel
+    // Pass scaling factors to maintain exact 3D positions
     let meshCount = 0;
+    let totalCellCount = 0;
+    
+    // Calculate center offset BEFORE creating meshes so we can adjust positions
+    // Use the same center calculation as boxCenter
+    const centerOffset = {
+      x: boxCenter.x,
+      y: boxCenter.y,
+      z: boxCenter.z
+    };
+    
+    console.log(`Local_View: Center offset to apply: (${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
+    
     for (const channelConfig of channels) {
       const channelData = await loadChannelData(channelConfig.channelIndex);
       if (!channelData) {
@@ -394,16 +446,20 @@ const Local_View = ({ selectedRegionData }) => {
         continue;
       }
 
-      const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene);
+      const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
       if (mesh) {
         scene.add(mesh);
         voxelMeshesRef.current.push(mesh);
         meshCount++;
+        totalCellCount += mesh.geometry.instanceCount;
         console.log(`Local_View: Added mesh for channel ${channelConfig.channelIndex} with ${mesh.geometry.instanceCount} instances`);
       } else {
         console.log(`Local_View: No mesh created for channel ${channelConfig.channelIndex} (no points in bounds)`);
       }
     }
+    
+    // Store cell count for UI display
+    setCellCount(totalCellCount);
 
     console.log(`Local_View: Created ${meshCount} meshes`);
 
@@ -414,22 +470,45 @@ const Local_View = ({ selectedRegionData }) => {
     scene.add(axesHelper);
     axesHelperRef.current = axesHelper;
 
-    // Center camera on the selected region and auto-zoom
-    cameraStateRef.current.panOffset = { x: boxCenter.x, y: boxCenter.y, z: boxCenter.z };
+    // Geometry is already centered at origin (0,0,0) via centerOffset applied during creation
+    // Center bounding box and axes helper at origin
+    if (boundingBoxRef.current) {
+      boundingBoxRef.current.position.set(0, 0, 0);
+    }
     
-    // Calculate optimal camera distance to fit the bounding box
-    // Use diagonal of bounding box to ensure everything is visible
-    const boxDiagonal = Math.sqrt(boxSize.x * boxSize.x + boxSize.y * boxSize.y + boxSize.z * boxSize.z);
+    if (axesHelperRef.current) {
+      axesHelperRef.current.position.set(0, 0, 0);
+    }
+    
+    // Set camera to look at origin (where geometry is centered)
+    cameraStateRef.current.panOffset = { x: 0, y: 0, z: 0 };
+    
+    // Calculate camera distance based on ACTUAL cuboid dimensions (not auto-fit)
+    // Use the maximum dimension of the bounding box to determine appropriate distance
     const maxDimension = Math.max(boxSize.x, boxSize.y, boxSize.z);
     
-    // Set camera distance to show the entire bounding box with some padding
-    // Use a factor that ensures the bounding box fits well in view
-    const fovRad = (60 * Math.PI) / 180; // Convert FOV to radians (matches camera FOV)
-    const distanceFactor = maxDimension / (2 * Math.tan(fovRad / 2));
-    cameraStateRef.current.distance = Math.max(0.3, Math.min(3.0, distanceFactor * 2.0));
+    // Calculate camera distance to show the cuboid with appropriate padding
+    // Formula: distance = (maxDimension / 2) / tan(fov/2) * paddingFactor
+    const fovRad = (60 * Math.PI) / 180; // Camera FOV in radians
+    const paddingFactor = 1.5; // Padding around cuboid (1.5x = 50% padding)
+    const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
+    cameraStateRef.current.distance = baseDistance * paddingFactor;
+    
+    // Clamp distance to reasonable bounds
+    cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, cameraStateRef.current.distance));
     
     // Reset camera rotation to a good viewing angle
     cameraStateRef.current.rotation = { x: 0.5, y: 0.5 };
+    
+    console.log(`Local_View: Geometry centered at origin (offset: ${centerOffsetX.toFixed(4)}, ${centerOffsetY.toFixed(4)}, ${centerOffsetZ.toFixed(4)})`);
+    console.log(`Local_View: Camera distance: ${cameraStateRef.current.distance.toFixed(4)} (based on max dimension: ${maxDimension.toFixed(4)})`);
+    
+    // Store initial camera state for reset functionality
+    initialCameraStateRef.current = {
+      rotation: { ...cameraStateRef.current.rotation },
+      distance: cameraStateRef.current.distance,
+      panOffset: { ...cameraStateRef.current.panOffset }
+    };
     
     updateCameraPosition();
     updateLighting();
@@ -573,21 +652,83 @@ const Local_View = ({ selectedRegionData }) => {
     }
   }, [selectedRegionData]);
 
-  // Calculate section depth from selected region data
-  const getSectionDepth = () => {
+  // Close info modal when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showInfoModal) {
+        const modal = document.getElementById('info-modal');
+        const infoButton = event.target.closest('button');
+        // Check if click is outside modal and not on the info button
+        if (modal && !modal.contains(event.target)) {
+          // Check if clicked button is the info button (ⓘ)
+          if (!infoButton || !infoButton.textContent.includes('ⓘ')) {
+            setShowInfoModal(false);
+          }
+        }
+      }
+    };
+
+    if (showInfoModal) {
+      // Use setTimeout to avoid immediate closure when clicking the button
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showInfoModal]);
+
+  // Reset camera view to initial position with visual feedback
+  const resetView = () => {
+    if (initialCameraStateRef.current) {
+      // Add visual feedback - briefly highlight button
+      const button = document.getElementById('reset-view-btn');
+      if (button) {
+        button.style.transform = 'scale(0.95)';
+        button.style.backgroundColor = '#4CAF50';
+        setTimeout(() => {
+          button.style.transform = 'scale(1)';
+          button.style.backgroundColor = '#555';
+        }, 150);
+      }
+      
+      // Reset camera state
+      cameraStateRef.current.rotation = { ...initialCameraStateRef.current.rotation };
+      cameraStateRef.current.distance = initialCameraStateRef.current.distance;
+      cameraStateRef.current.panOffset = { ...initialCameraStateRef.current.panOffset };
+      updateCameraPosition();
+      updateLighting();
+      
+      console.log('Local_View: Camera reset to initial position');
+    }
+  };
+
+  // Calculate section depth and volume from selected region data
+  const getSectionInfo = () => {
     if (!selectedRegionData || !selectedRegionData.bounds) return null;
     
     const bounds = selectedRegionData.bounds;
+    const widthVoxels = bounds.max.x - bounds.min.x + 1;
+    const heightVoxels = bounds.max.y - bounds.min.y + 1;
     const depthVoxels = bounds.max.z - bounds.min.z + 1;
     
     // Estimate physical size (assuming 1 µm per voxel, adjust based on your data)
     const voxelSize = 1; // µm per voxel (adjust as needed)
+    const widthMicrons = widthVoxels * voxelSize;
+    const heightMicrons = heightVoxels * voxelSize;
     const depthMicrons = depthVoxels * voxelSize;
+    const volumeMicrons3 = widthMicrons * heightMicrons * depthMicrons;
     
-    return Math.round(depthMicrons);
+    return {
+      width: Math.round(widthMicrons),
+      height: Math.round(heightMicrons),
+      depth: Math.round(depthMicrons),
+      volume: Math.round(volumeMicrons3)
+    };
   };
 
-  const sectionDepth = getSectionDepth();
+  const sectionInfo = getSectionInfo();
 
   return (
     <div style={{
@@ -611,23 +752,138 @@ const Local_View = ({ selectedRegionData }) => {
         position: 'absolute',
         top: '5px',
         left: '10px',
-        zIndex: 100
+        zIndex: 100,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
       }}>
         Local View
+        {/* Info Button */}
+        {selectedRegionData && sectionInfo && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowInfoModal(!showInfoModal);
+            }}
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              borderRadius: '50%',
+              width: '20px',
+              height: '20px',
+              cursor: 'pointer',
+              color: '#fff',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+              transition: 'all 0.2s',
+              lineHeight: '1'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+              e.target.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'transparent';
+              e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            }}
+            title="Show selection information"
+          >
+            ⓘ
+          </button>
+        )}
       </h3>
       
-      {/* Section Label */}
-      {sectionDepth && (
-        <div style={{
-          position: 'absolute',
-          top: '25px',
-          left: '10px',
-          color: 'white',
-          fontSize: '12px',
-          zIndex: 100
-        }}>
-          {sectionDepth} µm section
+      {/* Info Modal */}
+      {selectedRegionData && sectionInfo && showInfoModal && (
+        <div 
+          id="info-modal"
+          style={{
+            position: 'absolute',
+            top: '40px',
+            left: '10px',
+            backgroundColor: 'rgba(20, 20, 20, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '6px',
+            padding: '12px',
+            zIndex: 1000,
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            minWidth: '200px'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ 
+            fontWeight: 'bold', 
+            marginBottom: '8px', 
+            fontSize: '13px',
+            color: '#fff',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
+            paddingBottom: '6px'
+          }}>
+            3D Selection Info
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px' }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Dimensions (μm³):</span>
+            <span style={{ color: '#4ade80', fontWeight: '500' }}>
+              {sectionInfo.width} × {sectionInfo.height} × {sectionInfo.depth}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px' }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Volume:</span>
+            <span style={{ color: '#4ade80', fontWeight: '500' }}>
+              {sectionInfo.volume.toLocaleString()} μm³
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.2)', paddingTop: '6px' }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Cells:</span>
+            <span style={{ color: '#4ade80', fontWeight: '500' }}>
+              {cellCount.toLocaleString()}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px' }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Scale:</span>
+            <span style={{ color: '#4ade80', fontWeight: '500', fontStyle: 'italic' }}>
+              1:1 with main view
+            </span>
+          </div>
         </div>
+      )}
+      
+      {/* Reset View Button */}
+      {selectedRegionData && (
+        <button
+          id="reset-view-btn"
+          onClick={resetView}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            zIndex: 100,
+            padding: '6px 12px',
+            backgroundColor: '#555',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+            transition: 'all 0.15s ease',
+            transform: 'scale(1)'
+          }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#666'}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = '#555';
+            e.target.style.transform = 'scale(1)';
+          }}
+          title="Reset camera view to initial position"
+        >
+          Reset View
+        </button>
       )}
       
       {/* Scale Bar */}
