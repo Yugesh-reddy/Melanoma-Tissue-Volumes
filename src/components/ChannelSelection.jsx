@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import channelNamesData from '../channel_names.json';
 
 // Generate channel options (0-69 based on data shape)
@@ -17,6 +17,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
   
   
   const [channelRanges, setChannelRanges] = useState({}); // Store data ranges for each channel
+  const [pendingThresholds, setPendingThresholds] = useState({});
 
   const [channelOptions, setChannelOptions] = useState(() => {
     // Initialize with channel names from JSON or fallback to "Channel X"
@@ -62,23 +63,52 @@ const ChannelSelection = ({ onChannelsChange }) => {
     }
   }, []);
 
-  // Load metadata to get data ranges for each channel
+  const channelIndexKey = useMemo(
+    () => channels.map((c) => c.channelIndex).join(','),
+    [channels]
+  );
+
+  // Keep pending thresholds in sync with channel list
   useEffect(() => {
+    setPendingThresholds((prev) => {
+      const next = {};
+      channels.forEach((channel) => {
+        const existing = prev[channel.id];
+        next[channel.id] = existing || {
+          thresholdMin: channel.thresholdMin,
+          thresholdMax: channel.thresholdMax
+        };
+      });
+      return next;
+    });
+  }, [channels]);
+
+  // Load metadata to get data ranges for each channel only when indices change
+  useEffect(() => {
+    let cancelled = false;
+
     const loadChannelRanges = async () => {
-      const ranges = {};
-      const channelIndices = channels.map(c => c.channelIndex);
-      
-      for (const channelIndex of channelIndices) {
-        if (ranges[channelIndex]) continue; // Already loaded
-        
-        // Try to load metadata for this channel
+      if (channels.length === 0) {
+        if (!cancelled) {
+          setChannelRanges({});
+        }
+        return;
+      }
+
+      const ranges = { ...channelRanges };
+      let changed = false;
+
+      for (const channel of channels) {
+        const channelIndex = channel.channelIndex;
+        if (ranges[channelIndex]) continue;
+
         const paths = [
           `./visualization_data/channel_${channelIndex}_napari_metadata.json`,
           `visualization_data/channel_${channelIndex}_napari_metadata.json`,
           `./visualization_data/channel_${channelIndex}_metadata.json`,
           `visualization_data/channel_${channelIndex}_metadata.json`
         ];
-        
+
         for (const path of paths) {
           try {
             const response = await fetch(path);
@@ -87,68 +117,73 @@ const ChannelSelection = ({ onChannelsChange }) => {
               const dataRange = metadata.dataRange || [0, 65535];
               ranges[channelIndex] = dataRange;
               console.log(`Channel ${channelIndex}: Data range [${dataRange[0]}, ${dataRange[1]}]`);
+              changed = true;
               break;
             }
           } catch (error) {
-            continue;
+            // continue trying other paths
           }
         }
-        
-        // If not found, use default
+
         if (!ranges[channelIndex]) {
           ranges[channelIndex] = [0, 65535];
+          changed = true;
           console.log(`Channel ${channelIndex}: Using default data range [0, 65535]`);
         }
       }
-      
-      setChannelRanges(ranges);
-      
-      // Update channels with data ranges and adjust thresholds
-      const updatedChannels = channels.map(channel => {
-        const range = ranges[channel.channelIndex] || [0, 65535];
-        const hasDataRange = channel.dataRange && 
-          channel.dataRange[0] === range[0] && 
-          channel.dataRange[1] === range[1];
-        
-        // Calculate 10% to 90% of range (default if threshold not set)
-        const rangeSpan = range[1] - range[0];
-        const defaultMin = range[0] + rangeSpan * 0.1; // 10% of range
-        const defaultMax = range[0] + rangeSpan * 0.9; // 90% of range
-        
-        // Only update if data range changed or channel doesn't have dataRange
-        if (!hasDataRange) {
-          return {
-            ...channel,
-            dataRange: range,
-            // Keep existing threshold values if they're valid, otherwise use 10%-90% default
-            thresholdMin: (channel.thresholdMin === undefined || channel.thresholdMin < range[0] || channel.thresholdMin > range[1])
-              ? Math.round(defaultMin)
-              : channel.thresholdMin,
-            thresholdMax: (channel.thresholdMax === undefined || channel.thresholdMax < range[0] || channel.thresholdMax > range[1])
-              ? Math.round(defaultMax)
-              : channel.thresholdMax
-          };
-        }
-        return channel;
-      });
-      
-      // Only update if something changed
-      const needsUpdate = updatedChannels.some((ch, idx) => 
-        !channels[idx].dataRange || 
-        ch.dataRange[0] !== channels[idx].dataRange[0] || 
-        ch.dataRange[1] !== channels[idx].dataRange[1] ||
-        ch.thresholdMin !== channels[idx].thresholdMin ||
-        ch.thresholdMax !== channels[idx].thresholdMax
-      );
-      
-      if (needsUpdate) {
-        setChannels(updatedChannels);
+
+      if (changed && !cancelled) {
+        setChannelRanges(ranges);
+        setChannels((prev) =>
+          prev.map((channel) => {
+            const range = ranges[channel.channelIndex] || [0, 65535];
+            if (
+              channel.dataRange &&
+              channel.dataRange[0] === range[0] &&
+              channel.dataRange[1] === range[1]
+            ) {
+              return channel;
+            }
+
+            const rangeSpan = range[1] - range[0];
+            const defaultMin = Math.round(range[0] + rangeSpan * 0.1);
+            const defaultMax = Math.round(range[0] + rangeSpan * 0.9);
+
+            setPendingThresholds((prevPending) => ({
+              ...prevPending,
+              [channel.id]: {
+                thresholdMin: defaultMin,
+                thresholdMax: defaultMax
+              }
+            }));
+
+            return {
+              ...channel,
+              dataRange: range,
+              thresholdMin:
+                channel.thresholdMin === undefined ||
+                channel.thresholdMin < range[0] ||
+                channel.thresholdMin > range[1]
+                  ? defaultMin
+                  : channel.thresholdMin,
+              thresholdMax:
+                channel.thresholdMax === undefined ||
+                channel.thresholdMax < range[0] ||
+                channel.thresholdMax > range[1]
+                  ? defaultMax
+                  : channel.thresholdMax
+            };
+          })
+        );
       }
     };
-    
+
     loadChannelRanges();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channels.map(c => c.channelIndex).join(',')]); // Reload when channel indices change
+
+    return () => {
+      cancelled = true;
+    };
+  }, [channelIndexKey]);
   
   // Notify parent on mount and whenever channels change
   useEffect(() => {
@@ -199,6 +234,13 @@ const ChannelSelection = ({ onChannelsChange }) => {
     };
     const updatedChannels = [...channels, newChannel];
     setChannels(updatedChannels);
+    setPendingThresholds((prev) => ({
+      ...prev,
+      [newId]: {
+        thresholdMin: newChannel.thresholdMin,
+        thresholdMax: newChannel.thresholdMax
+      }
+    }));
     if (onChannelsChange) {
       onChannelsChange(updatedChannels);
     }
@@ -207,6 +249,11 @@ const ChannelSelection = ({ onChannelsChange }) => {
   const removeChannel = (id) => {
     const updatedChannels = channels.filter(c => c.id !== id);
     setChannels(updatedChannels);
+    setPendingThresholds((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     if (onChannelsChange) {
       onChannelsChange(updatedChannels);
     }
@@ -229,7 +276,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
         }
         
         // Convert threshold and opacity to numbers
-        if (field === 'thresholdMin' || field === 'thresholdMax' || field === 'opacity') {
+        if (field === 'opacity') {
           updated[field] = parseFloat(value);
         }
         
@@ -248,12 +295,96 @@ const ChannelSelection = ({ onChannelsChange }) => {
         if (updated.thresholdMax < dataRange[0]) updated.thresholdMax = dataRange[0];
         if (updated.thresholdMax > dataRange[1]) updated.thresholdMax = dataRange[1];
         
+        if (field === 'channelIndex') {
+          setPendingThresholds((prevPending) => ({
+            ...prevPending,
+            [id]: {
+              thresholdMin: updated.thresholdMin,
+              thresholdMax: updated.thresholdMax
+            }
+          }));
+        }
+        
         return updated;
       }
       return channel;
     });
     setChannels(updatedChannels);
     // Immediately notify parent for real-time updates
+    if (onChannelsChange) {
+      onChannelsChange(updatedChannels);
+    }
+  };
+
+  const handlePendingThresholdChange = (id, type, rawValue) => {
+    const channel = channels.find((c) => c.id === id);
+    if (!channel) return;
+
+    const dataRange = channel.dataRange || [0, 65535];
+    const clamped = clampValue(parseInt(rawValue, 10), dataRange[0], dataRange[1]);
+
+    setPendingThresholds((prev) => {
+      const existing = prev[id] || {
+        thresholdMin: channel.thresholdMin,
+        thresholdMax: channel.thresholdMax
+      };
+      const next = {
+        ...existing,
+        [type]: clamped
+      };
+      if (type === 'thresholdMin' && next.thresholdMin > next.thresholdMax) {
+        next.thresholdMax = next.thresholdMin;
+      }
+      if (type === 'thresholdMax' && next.thresholdMax < next.thresholdMin) {
+        next.thresholdMin = next.thresholdMax;
+      }
+      next.thresholdMin = clampValue(next.thresholdMin, dataRange[0], dataRange[1]);
+      next.thresholdMax = clampValue(next.thresholdMax, dataRange[0], dataRange[1]);
+      return {
+        ...prev,
+        [id]: next
+      };
+    });
+  };
+
+  const clampValue = (value, min, max) => {
+    if (Number.isNaN(value)) return min;
+    return Math.min(Math.max(value, min), max);
+  };
+
+  const applyPendingThresholds = () => {
+    let changed = false;
+    const updatedChannels = channels.map((channel) => {
+      const pending = pendingThresholds[channel.id];
+      if (!pending) return channel;
+      if (
+        channel.thresholdMin === pending.thresholdMin &&
+        channel.thresholdMax === pending.thresholdMax
+      ) {
+        return channel;
+      }
+      changed = true;
+      return {
+        ...channel,
+        thresholdMin: pending.thresholdMin,
+        thresholdMax: pending.thresholdMax
+      };
+    });
+
+    if (!changed) return;
+
+    setChannels(updatedChannels);
+    setPendingThresholds((prev) => {
+      const next = { ...prev };
+      updatedChannels.forEach((channel) => {
+        next[channel.id] = {
+          thresholdMin: channel.thresholdMin,
+          thresholdMax: channel.thresholdMax
+        };
+      });
+      return next;
+    });
+
     if (onChannelsChange) {
       onChannelsChange(updatedChannels);
     }
@@ -408,13 +539,17 @@ const ChannelSelection = ({ onChannelsChange }) => {
               />
 
             {/* Threshold Range Slider (Dual Range with Value Labels) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0px', minWidth: '160px', flex: 1, position: 'relative' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '160px', flex: 1, position: 'relative' }}>
               {(() => {
                 const dataRange = channel.dataRange || [0, 65535];
                 const rangeMin = dataRange[0];
                 const rangeMax = dataRange[1];
-                const thresholdMin = channel.thresholdMin !== undefined ? channel.thresholdMin : rangeMin;
-                const thresholdMax = channel.thresholdMax !== undefined ? channel.thresholdMax : rangeMax;
+                const pending = pendingThresholds[channel.id] || {
+                  thresholdMin: channel.thresholdMin ?? rangeMin,
+                  thresholdMax: channel.thresholdMax ?? rangeMax
+                };
+                const thresholdMin = pending.thresholdMin;
+                const thresholdMax = pending.thresholdMax;
                 const minPercent = ((thresholdMin - rangeMin) / (rangeMax - rangeMin)) * 100;
                 const maxPercent = ((thresholdMax - rangeMin) / (rangeMax - rangeMin)) * 100;
                 
@@ -494,8 +629,8 @@ const ChannelSelection = ({ onChannelsChange }) => {
                         step={Math.max(1, Math.floor((rangeMax - rangeMin) / 1000))}
                         value={thresholdMin}
                         onChange={(e) => {
-                          const newMin = Math.min(parseInt(e.target.value), thresholdMax);
-                          updateChannel(channel.id, 'thresholdMin', newMin);
+                          const value = Math.min(parseInt(e.target.value, 10), thresholdMax);
+                          handlePendingThresholdChange(channel.id, 'thresholdMin', value);
                         }}
                         onMouseDown={(e) => {
                           e.stopPropagation();
@@ -542,8 +677,8 @@ const ChannelSelection = ({ onChannelsChange }) => {
                         step={Math.max(1, Math.floor((rangeMax - rangeMin) / 1000))}
                         value={thresholdMax}
                         onChange={(e) => {
-                          const newMax = Math.max(parseInt(e.target.value), thresholdMin);
-                          updateChannel(channel.id, 'thresholdMax', newMax);
+                          const value = Math.max(parseInt(e.target.value, 10), thresholdMin);
+                          handlePendingThresholdChange(channel.id, 'thresholdMax', value);
                         }}
                         onMouseDown={(e) => {
                           e.stopPropagation();
@@ -585,6 +720,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
                   </>
                 );
               })()}
+              <div />
             </div>
 
               {/* More Options (Vertical Ellipsis) with Delete */}
@@ -619,27 +755,71 @@ const ChannelSelection = ({ onChannelsChange }) => {
       </div>
 
       {/* Add Channel Button */}
-      <button
-        onClick={addChannel}
-        style={{
-          marginTop: '8px',
-          padding: '8px 16px',
-          backgroundColor: '#4CAF50',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: 'pointer',
-          fontSize: '11px',
-          fontWeight: '500',
-          textTransform: 'uppercase',
-          letterSpacing: '0.4px',
-          width: '100%'
-        }}
-        onMouseOver={(e) => { e.target.style.backgroundColor = '#45a049'; }}
-        onMouseOut={(e) => { e.target.style.backgroundColor = '#4CAF50'; }}
-      >
-        + Add Channel
-      </button>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+        <button
+          onClick={addChannel}
+          style={{
+            flex: 1,
+            padding: '8px 16px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: '500',
+            textTransform: 'uppercase',
+            letterSpacing: '0.4px'
+          }}
+          onMouseOver={(e) => { e.target.style.backgroundColor = '#45a049'; }}
+          onMouseOut={(e) => { e.target.style.backgroundColor = '#4CAF50'; }}
+        >
+          + Add Channel
+        </button>
+        <button
+          onClick={applyPendingThresholds}
+          disabled={!channels.some((channel) => {
+            const pending = pendingThresholds[channel.id];
+            if (!pending) return false;
+            return (
+              pending.thresholdMin !== channel.thresholdMin ||
+              pending.thresholdMax !== channel.thresholdMax
+            );
+          })}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: channels.some((channel) => {
+              const pending = pendingThresholds[channel.id];
+              if (!pending) return false;
+              return (
+                pending.thresholdMin !== channel.thresholdMin ||
+                pending.thresholdMax !== channel.thresholdMax
+              );
+            })
+              ? '#2d7ff9'
+              : '#444',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: channels.some((channel) => {
+              const pending = pendingThresholds[channel.id];
+              if (!pending) return false;
+              return (
+                pending.thresholdMin !== channel.thresholdMin ||
+                pending.thresholdMax !== channel.thresholdMax
+              );
+            })
+              ? 'pointer'
+              : 'default',
+            fontSize: '11px',
+            fontWeight: '500',
+            textTransform: 'uppercase',
+            letterSpacing: '0.4px'
+          }}
+        >
+          Apply Filter
+        </button>
+      </div>
     </div>
   );
 };

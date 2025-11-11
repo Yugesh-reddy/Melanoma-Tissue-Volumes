@@ -15,7 +15,7 @@ const CAMERA_INITIAL_STATE = {
 const MOVE_SPEED = 0.05;
 const FAST_MOVE_SPEED = 0.15;
 const LOD_COOLDOWN_MS = 200;
-const MAX_POINTS_PER_CHANNEL = 4_000_000;
+const MAX_POINTS_PER_CHANNEL = 1000_000;
 const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
 const EDGE_FEATHER = 0.99;
@@ -152,6 +152,7 @@ const Main_View = ({ channels = [] }) => {
 
     const points = [];
     const opacities = [];
+    const baseOpacityFloor = 0.35;
 
     const maxDim = Math.max(zSize, ySize, xSize);
     const scaleX = xSize / maxDim;
@@ -165,7 +166,7 @@ const Main_View = ({ channels = [] }) => {
     if (estimatedPassing > MAX_POINTS_PER_CHANNEL) {
       const ratio = estimatedPassing / MAX_POINTS_PER_CHANNEL;
       sampling = Math.max(2, Math.ceil(Math.cbrt(ratio * 1.5)));
-      if (totalVoxels > 50_000_000) {
+      if (totalVoxels > 5000_000) {
         sampling = Math.max(sampling, 4);
       }
     }
@@ -182,6 +183,7 @@ const Main_View = ({ channels = [] }) => {
     const stepZ = (2 / zSize) * scaleZ * sampling;
 
     let pointCount = 0;
+    const thresholdSpan = Math.max(1, maxThreshold - minThreshold);
     for (let z = 0; z < zSize; z += sampling) {
       for (let y = 0; y < ySize; y += sampling) {
         for (let x = 0; x < xSize; x += sampling) {
@@ -205,9 +207,10 @@ const Main_View = ({ channels = [] }) => {
             const jitterZ = (Math.random() - 0.5) * stepZ * JITTER_SCALE;
             points.push(nx + jitterX, ny + jitterY, nz + jitterZ);
 
-            const normalizedOpacity = dataMax > 0 ? value / dataMax : 0;
-            const boostedOpacity = Math.min(1, normalizedOpacity * OPACITY_BOOST);
-            opacities.push(Math.max(OPACITY_FLOOR, boostedOpacity));
+            const normalizedOpacity = (value - minThreshold) / thresholdSpan;
+            const scaledOpacity = clamp(normalizedOpacity, 0, 1);
+            const finalOpacity = baseOpacityFloor + (1 - baseOpacityFloor) * scaledOpacity * OPACITY_BOOST;
+            opacities.push(clamp(finalOpacity, baseOpacityFloor, 1));
           }
         }
       }
@@ -232,7 +235,6 @@ const Main_View = ({ channels = [] }) => {
     const voxelMaterial = new THREE.ShaderMaterial({
       uniforms: {
         color: { value: new THREE.Color(r, g, b) },
-        opacityBoost: { value: OPACITY_BOOST },
         edgeFeather: { value: EDGE_FEATHER }
       },
       vertexShader: `
@@ -250,19 +252,17 @@ const Main_View = ({ channels = [] }) => {
       `,
       fragmentShader: `
         uniform vec3 color;
-        uniform float opacityBoost;
         uniform float edgeFeather;
         varying float vOpacity;
         varying vec3 vLocalPos;
         void main() {
-          float base = clamp(vOpacity * opacityBoost, 0.0, 1.0);
+          float base = clamp(vOpacity, 0.0, 1.0);
           float edge = max(max(abs(vLocalPos.x), abs(vLocalPos.y)), abs(vLocalPos.z));
           float edgeFade = smoothstep(0.5 - edgeFeather, 0.5, edge);
           base *= (1.0 - edgeFade);
-          float alpha = clamp(base, 0.0, 1.0);
-          if (alpha <= 0.01) discard;
+          if (base <= 0.01) discard;
           vec3 finalColor = pow(color, vec3(0.55));
-          gl_FragColor = vec4(finalColor * alpha, alpha);
+          gl_FragColor = vec4(finalColor * base, base);
         }
       `,
       transparent: true,
@@ -688,30 +688,16 @@ const Main_View = ({ channels = [] }) => {
       const newSignature = getConfigSignature(channelConfig);
       const configChanged = entry?.configSignature !== newSignature;
 
-      if (entry && configChanged && channelData) {
+      if (entry && configChanged) {
         if (mesh && scene.children.includes(mesh)) {
           scene.remove(mesh);
         }
         disposeMesh(mesh);
         removeMeshFromCollection(mesh, pointCloudsRef.current);
-
-        const refreshed = createChannelVisualization(channelData, channelConfig, entry.sampling);
-        if (refreshed) {
-          const { mesh: newMesh, sampling } = refreshed;
-          mesh = newMesh;
-          pointCloudsRef.current.push(newMesh);
-          loadedChannels.set(channelIndex, {
-            mesh: newMesh,
-            sampling,
-            lastRequestedSampling: entry.lastRequestedSampling ?? sampling,
-            configSignature: newSignature
-          });
-          console.log(`Main_View: ♻️ Channel ${channelIndex} refreshed with new settings`);
-        } else {
-          loadedChannels.delete(channelIndex);
-          mesh = null;
-          console.warn(`Main_View: ⚠️ Channel ${channelIndex} removed after filtering produced no voxels`);
-        }
+        loadedChannels.delete(channelIndex);
+        channelDataCache.delete(channelIndex);
+        mesh = null;
+        console.log(`Main_View: ♻️ Channel ${channelIndex} flagged for reload due to configuration change`);
       }
 
       if (mesh) {
