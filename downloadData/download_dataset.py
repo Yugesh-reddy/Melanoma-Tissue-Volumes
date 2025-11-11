@@ -12,7 +12,7 @@ def download_biomedvis_dataset():
     print(" BiomedVis Challenge 2025 - Dataset Downloader")
     print("=" * 50)
     print(" Dataset: Quality 3 (6GB)")
-    print(" Output: ./biomedvis-24gb/")
+    print(" Output: ./biomedvis-6gb/")
     print("  Time: 2-10 minutes")
     print("-" * 50)
     

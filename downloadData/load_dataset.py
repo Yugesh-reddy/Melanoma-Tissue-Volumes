@@ -12,7 +12,7 @@ def load_biomedvis_data():
     print("🚀 Loading BiomedVis Challenge 2025 dataset...")
     
     # Load from local downloaded data
-    local_path = "./biomedvis-24gb/0/3"
+    local_path = "./biomedvis-6gb/0/3"
     
     # Check if data exists
     if not os.path.exists(local_path):
