@@ -37,8 +37,14 @@ function App() {
     }
   ]);
 
+  const [selectedRegionData, setSelectedRegionData] = useState(null);
+
   const handleChannelsChange = (updatedChannels) => {
     setChannels(updatedChannels);
+  };
+
+  const handleSelectionChange = (selectedData) => {
+    setSelectedRegionData(selectedData);
   };
 
   return (
@@ -68,14 +74,14 @@ function App() {
         <div style={{ width: '75%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Main View - 75% height */}
           <div style={{ height: '75%' }}>
-            <Main_View channels={channels} />
+            <Main_View channels={channels} onSelectionChange={handleSelectionChange} />
           </div>
 
           {/* Bottom panels - 25% height */}
           <div style={{ height: '25%', display: 'flex' }}>
             {/* Local View - 25% width */}
             <div style={{ width: '33.3%', height: '100%' }}>
-              <Local_View />
+              <Local_View selectedRegionData={selectedRegionData} />
             </div>
             {/* Graph Panel - 25% width */}
             <div style={{ width: '33.3%', height: '100%' }}>
