@@ -275,10 +275,11 @@ const ChannelSelection = ({ onChannelsChange }) => {
       width: '100%',
       backgroundColor: '#000000',
       border: '1px solid #444',
-      padding: '12px',
+      padding: '10px',
       overflow: 'auto',
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      fontSize: '12px'
     }}>
       {/* Header */}
       <div style={{ 
@@ -295,7 +296,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
       </div>
       
       {/* Channel List */}
-      <div style={{ flex: 1, overflowY: 'auto', marginBottom: '16px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', marginBottom: '12px' }}>
         {channels.map((channel, index) => {
           const rgb = hexToRgb(channel.color);
           const checkboxColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
@@ -306,23 +307,23 @@ const ChannelSelection = ({ onChannelsChange }) => {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '12px',
-                marginBottom: '12px',
-                padding: '8px',
+                gap: '10px',
+                marginBottom: '10px',
+                padding: '6px',
                 backgroundColor: '#1a1a1a',
                 borderRadius: '4px',
                 border: '1px solid #444'
               }}
             >
               {/* Visibility Checkbox */}
-              <div style={{ position: 'relative', width: '20px', height: '20px' }}>
+              <div style={{ position: 'relative', width: '16px', height: '16px' }}>
                 <input
                   type="checkbox"
                   checked={channel.visible}
                   onChange={(e) => updateChannel(channel.id, 'visible', e.target.checked)}
                   style={{
-                    width: '20px',
-                    height: '20px',
+                    width: '16px',
+                    height: '16px',
                     cursor: 'pointer',
                     appearance: 'none',
                     border: '2px solid #ccc',
@@ -334,10 +335,10 @@ const ChannelSelection = ({ onChannelsChange }) => {
                 {channel.visible && (
                   <span style={{
                     position: 'absolute',
-                    left: '4px',
-                    top: '1px',
+                    left: '2px',
+                    top: '-1px',
                     color: 'white',
-                    fontSize: '14px',
+                    fontSize: '12px',
                     fontWeight: 'bold',
                     pointerEvents: 'none'
                   }}>✓</span>
@@ -347,8 +348,8 @@ const ChannelSelection = ({ onChannelsChange }) => {
               {/* Color Square */}
               <div
                 style={{
-                  width: '20px',
-                  height: '20px',
+                  width: '16px',
+                  height: '16px',
                   backgroundColor: channel.color,
                   borderRadius: '3px',
                   border: '1px solid #555',
@@ -361,13 +362,13 @@ const ChannelSelection = ({ onChannelsChange }) => {
                 value={channel.channelIndex}
                 onChange={(e) => updateChannel(channel.id, 'channelIndex', parseInt(e.target.value))}
                 style={{
-                  padding: '6px 10px',
+                  padding: '5px 8px',
                   backgroundColor: '#2a2a2a',
                   color: 'white',
                   border: '1px solid #555',
                   borderRadius: '4px',
-                  fontSize: '13px',
-                  minWidth: '120px',
+                  fontSize: '11px',
+                  minWidth: '100px',
                   cursor: 'pointer',
                   outline: 'none'
                 }}
@@ -396,8 +397,8 @@ const ChannelSelection = ({ onChannelsChange }) => {
               <div
                 onClick={() => document.getElementById(`color-picker-${channel.id}`).click()}
                 style={{
-                  width: '24px',
-                  height: '24px',
+                  width: '20px',
+                  height: '20px',
                   backgroundColor: channel.color,
                   borderRadius: '4px',
                   border: '1px solid #555',
@@ -407,7 +408,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
               />
 
             {/* Threshold Range Slider (Dual Range with Value Labels) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0px', minWidth: '200px', flex: 1, position: 'relative' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0px', minWidth: '160px', flex: 1, position: 'relative' }}>
               {(() => {
                 const dataRange = channel.dataRange || [0, 65535];
                 const rangeMin = dataRange[0];
@@ -420,7 +421,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
                 return (
                   <>
                     {/* Value labels above handles */}
-                    <div style={{ position: 'relative', width: '100%', height: '24px', marginBottom: '4px' }}>
+                    <div style={{ position: 'relative', width: '100%', height: '20px', marginBottom: '4px' }}>
                       {/* Min value label */}
                       <div style={{
                         position: 'absolute',
@@ -429,9 +430,9 @@ const ChannelSelection = ({ onChannelsChange }) => {
                         top: '0px',
                         backgroundColor: channel.color,
                         color: 'white',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
+                        padding: '2px 6px',
+                        borderRadius: '10px',
+                        fontSize: '10px',
                         fontWeight: 'bold',
                         whiteSpace: 'nowrap',
                         pointerEvents: 'none',
@@ -448,9 +449,9 @@ const ChannelSelection = ({ onChannelsChange }) => {
                         top: '0px',
                         backgroundColor: channel.color,
                         color: 'white',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
+                        padding: '2px 6px',
+                        borderRadius: '10px',
+                        fontSize: '10px',
                         fontWeight: 'bold',
                         whiteSpace: 'nowrap',
                         pointerEvents: 'none',
@@ -462,12 +463,12 @@ const ChannelSelection = ({ onChannelsChange }) => {
                     </div>
                     
                     {/* Slider container */}
-                    <div style={{ position: 'relative', width: '100%', height: '12px', display: 'flex', alignItems: 'center', flex: 1 }}>
+                    <div style={{ position: 'relative', width: '100%', height: '10px', display: 'flex', alignItems: 'center', flex: 1 }}>
                       {/* Background track */}
                       <div style={{
                         position: 'absolute',
                         width: '100%',
-                        height: '6px',
+                        height: '5px',
                         backgroundColor: '#555',
                         borderRadius: '3px',
                         zIndex: 0
@@ -477,7 +478,7 @@ const ChannelSelection = ({ onChannelsChange }) => {
                         position: 'absolute',
                         left: `${minPercent}%`,
                         width: `${maxPercent - minPercent}%`,
-                        height: '6px',
+                        height: '5px',
                         backgroundColor: channel.color,
                         borderRadius: '3px',
                         zIndex: 0,
@@ -518,10 +519,10 @@ const ChannelSelection = ({ onChannelsChange }) => {
                         style={{
                           position: 'absolute',
                           width: '100%',
-                          height: '12px',
+                          height: '10px',
                           margin: 0,
                           padding: 0,
-                          top: '-3px',
+                          top: '-2px',
                           zIndex: minPercent <= maxPercent ? '4' : '5',
                           pointerEvents: 'auto',
                           background: 'transparent',
@@ -566,10 +567,10 @@ const ChannelSelection = ({ onChannelsChange }) => {
                         style={{
                           position: 'absolute',
                           width: '100%',
-                          height: '12px',
+                          height: '10px',
                           margin: 0,
                           padding: 0,
-                          top: '-3px',
+                          top: '-2px',
                           zIndex: maxPercent >= minPercent ? '5' : '4',
                           pointerEvents: 'auto',
                           background: 'transparent',
@@ -600,8 +601,8 @@ const ChannelSelection = ({ onChannelsChange }) => {
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
-                    padding: '4px 8px',
-                    fontSize: '18px',
+                    padding: '2px 6px',
+                    fontSize: '16px',
                     color: '#aaa',
                     display: 'flex',
                     alignItems: 'center',
@@ -621,17 +622,17 @@ const ChannelSelection = ({ onChannelsChange }) => {
       <button
         onClick={addChannel}
         style={{
-          marginTop: '10px',
-          padding: '10px 20px',
+          marginTop: '8px',
+          padding: '8px 16px',
           backgroundColor: '#4CAF50',
           color: 'white',
           border: 'none',
           borderRadius: '4px',
           cursor: 'pointer',
-          fontSize: '13px',
+          fontSize: '11px',
           fontWeight: '500',
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
+          letterSpacing: '0.4px',
           width: '100%'
         }}
         onMouseOver={(e) => { e.target.style.backgroundColor = '#45a049'; }}
