@@ -764,11 +764,34 @@ const Main_View = ({ channels = [] }) => {
     const scene = sceneRef.current;
     const visibleChannels = channels.filter(c => c.visible !== false);
     const loadedChannels = loadedChannelsRef.current;
+    const channelDataCache = channelDataCacheRef.current;
     
     console.log(`\n${'='.repeat(60)}`);
     console.log(`Main_View: Updating channels`);
     console.log(`Main_View: Total channels: ${channels.length}, Visible: ${visibleChannels.length}`);
     console.log(`${'='.repeat(60)}\n`);
+
+    // Clean up meshes for channels no longer present
+    const activeChannelIndices = new Set(channels.map(c => c.channelIndex));
+    loadedChannels.forEach((entry, channelIndex) => {
+      if (!activeChannelIndices.has(channelIndex)) {
+        const mesh = entry?.mesh;
+        if (mesh && scene.children.includes(mesh)) {
+          scene.remove(mesh);
+        }
+        if (mesh) {
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) mesh.material.dispose();
+          const listIndex = pointCloudsRef.current.indexOf(mesh);
+          if (listIndex !== -1) {
+            pointCloudsRef.current.splice(listIndex, 1);
+          }
+        }
+        loadedChannels.delete(channelIndex);
+        channelDataCache.delete(channelIndex);
+        console.log(`Main_View: 🗑️ Removed channel ${channelIndex} (no longer in selection)`);
+      }
+    });
 
     // Update visibility for existing channels (already loaded)
     const configMap = channelConfigsRef.current;
