@@ -20,6 +20,7 @@ const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
 const EDGE_FEATHER = 0.99;
 const JITTER_SCALE = 0.1;
+const AMBIENT_COLOR = new THREE.Color(0.9, 0.9, 0.95);
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -231,11 +232,6 @@ const Main_View = ({ channels = [] }) => {
     const voxelMaterial = new THREE.ShaderMaterial({
       uniforms: {
         color: { value: new THREE.Color(r, g, b) },
-        lightDirection: { value: new THREE.Vector3(0, 0, 1) },
-        ambientColor: { value: new THREE.Color(0.95, 0.95, 0.95) },
-        specularColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
-        shininess: { value: 1.0 },
-        brightness: { value: 2.0 },
         opacityBoost: { value: OPACITY_BOOST },
         edgeFeather: { value: EDGE_FEATHER }
       },
@@ -243,57 +239,36 @@ const Main_View = ({ channels = [] }) => {
         attribute vec3 instanceOffset;
         attribute float instanceOpacity;
         varying float vOpacity;
-        varying vec3 vViewDir;
-        varying vec3 vNormal;
         varying vec3 vLocalPos;
         void main() {
           vOpacity = instanceOpacity;
           vec3 transformed = position + instanceOffset;
-          vNormal = normalize(normalMatrix * normal);
           vLocalPos = position;
           vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-          vViewDir = normalize(-mvPosition.xyz);
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
       fragmentShader: `
         uniform vec3 color;
         uniform float opacityBoost;
-        uniform vec3 lightDirection;
-        uniform vec3 ambientColor;
-        uniform vec3 specularColor;
-        uniform float shininess;
-        uniform float brightness;
         uniform float edgeFeather;
         varying float vOpacity;
-        varying vec3 vViewDir;
-        varying vec3 vNormal;
         varying vec3 vLocalPos;
         void main() {
-          vec3 normal = normalize(vNormal);
-          vec3 V = normalize(vViewDir);
-          vec3 L = normalize(V);
-          float diffuse = max(dot(normal, L), 0.0);
-          vec3 R = reflect(-L, normal);
-          float spec = pow(max(dot(R, V), 0.0), shininess);
-
           float base = clamp(vOpacity * opacityBoost, 0.0, 1.0);
           float edge = max(max(abs(vLocalPos.x), abs(vLocalPos.y)), abs(vLocalPos.z));
           float edgeFade = smoothstep(0.5 - edgeFeather, 0.5, edge);
           base *= (1.0 - edgeFade);
-
-          vec3 baseColor = pow(color, vec3(0.55));
-          vec3 lighting = ambientColor + diffuse * baseColor + spec * specularColor;
-          vec3 finalColor = lighting * brightness;
           float alpha = clamp(base, 0.0, 1.0);
           if (alpha <= 0.01) discard;
+          vec3 finalColor = pow(color, vec3(0.55));
           gl_FragColor = vec4(finalColor * alpha, alpha);
         }
       `,
       transparent: true,
-      depthWrite: true,
-      depthTest: true,
-      blending: THREE.NormalBlending
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending
     });
 
     const mesh = new THREE.Mesh(geometry, voxelMaterial);
@@ -303,30 +278,16 @@ const Main_View = ({ channels = [] }) => {
     return { mesh, sampling };
   }, []);
 
-  const updateLighting = useCallback(() => {
-    const camera = cameraRef.current;
-    if (!camera) return;
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    pointCloudsRef.current.forEach((mesh) => {
-      const material = mesh?.material;
-      if (material?.uniforms?.lightDirection) {
-        material.uniforms.lightDirection.value.copy(direction);
-      }
-    });
-  }, []);
-
   const renderScene = useCallback(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     if (!scene || !camera) return;
-    updateLighting();
     if (composerRef.current) {
       composerRef.current.render();
     } else if (rendererRef.current) {
       rendererRef.current.render(scene, camera);
     }
-  }, [updateLighting]);
+  }, []);
 
   const updateCameraPosition = useCallback(() => {
     const camera = cameraRef.current;
@@ -808,6 +769,7 @@ const Main_View = ({ channels = [] }) => {
 
             if (channelConfig.visible !== false) {
               scene.add(mesh);
+              mesh.renderOrder = 1;
               console.log(`Main_View: ✅ Channel ${channelConfig.channelIndex} added (sampling=${sampling})`);
             } else {
               console.log(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} prepared but not visible`);
