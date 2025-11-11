@@ -13,28 +13,7 @@ const rgbToHex = (r, g, b) => {
 };
 
 const ChannelSelection = ({ onChannelsChange }) => {
-  const [channels, setChannels] = useState([
-    {
-      id: 0,
-      channelIndex: 19,
-      color: rgbToHex(0, 255, 0), // Green [0, 255, 0]
-      thresholdMin: 300,
-      thresholdMax: 20000,
-      dataRange: [0, 32737], // Default, will be updated from metadata
-      opacity: 1.0,
-      visible: true
-    },
-    {
-      id: 1,
-      channelIndex: 27,
-      color: rgbToHex(0, 0, 255), // Blue [0, 0, 255]
-      thresholdMin: 1000,
-      thresholdMax: 7000,
-      dataRange: [0, 65535], // Default, will be updated from metadata
-      opacity: 1.0,
-      visible: true
-    }
-  ]);
+  const [channels, setChannels] = useState([]);
   
   
   const [channelRanges, setChannelRanges] = useState({}); // Store data ranges for each channel
