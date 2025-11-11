@@ -16,26 +16,7 @@ const rgbToHex = (r, g, b) => {
 };
 
 function App() {
-  const [channels, setChannels] = useState([
-    {
-      id: 0,
-      channelIndex: 19,
-      color: rgbToHex(0, 255, 0), // Green [0, 255, 0]
-      thresholdMin: 300,
-      thresholdMax: 20000,
-      opacity: 1.0,
-      visible: true
-    },
-    {
-      id: 1,
-      channelIndex: 27,
-      color: rgbToHex(255, 255, 0), // Yellow [255, 255, 0]
-      thresholdMin: 1000,
-      thresholdMax: 7000,
-      opacity: 1.0,
-      visible: true
-    }
-  ]);
+  const [channels, setChannels] = useState([]);
 
   const handleChannelsChange = (updatedChannels) => {
     setChannels(updatedChannels);

@@ -205,7 +205,6 @@ const ChannelSelection = ({ onChannelsChange }) => {
   };
 
   const removeChannel = (id) => {
-    if (channels.length === 1) return; // Keep at least one channel
     const updatedChannels = channels.filter(c => c.id !== id);
     setChannels(updatedChannels);
     if (onChannelsChange) {
