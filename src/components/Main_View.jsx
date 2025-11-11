@@ -1,25 +1,124 @@
+  const updateChannelLOD = () => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const state = cameraStateRef.current;
+    if (!state) return;
+
+    const desiredSampling = getDesiredSampling(state.distance || 3);
+    const lodState = lodStateRef.current;
+    const now = Date.now();
+
+    if (now - lodState.lastUpdate < lodCooldownMs) {
+      return;
+    }
+
+    lodState.lastUpdate = now;
+    console.log(`Main_View LOD: distance=${(state.distance || 0).toFixed(2)}, desiredSampling=${desiredSampling}`);
+
+    const loadedChannels = loadedChannelsRef.current;
+    loadedChannels.forEach((entry, channelIndex) => {
+      if (!entry) return;
+      if (entry.sampling === desiredSampling || entry.lastRequestedSampling === desiredSampling) {
+        return;
+      }
+
+      const channelData = channelDataCacheRef.current.get(channelIndex);
+      const channelConfig = channelConfigsRef.current.get(channelIndex);
+      if (!channelData || !channelConfig) return;
+
+      const previousMesh = entry.mesh;
+      const wasVisible = previousMesh ? scene.children.includes(previousMesh) : false;
+
+      if (wasVisible && previousMesh) {
+        scene.remove(previousMesh);
+      }
+
+      const result = createChannelVisualization(channelData, channelConfig, scene, {
+        samplingOverride: desiredSampling,
+        addToScene: false
+      });
+
+      if (!result) {
+        if (wasVisible && previousMesh && channelConfig.visible !== false) {
+          scene.add(previousMesh);
+        }
+        entry.lastRequestedSampling = desiredSampling;
+        return;
+      }
+
+      const { mesh, sampling } = result;
+
+      if (previousMesh) {
+        const index = pointCloudsRef.current.indexOf(previousMesh);
+        if (index !== -1) {
+          pointCloudsRef.current[index] = mesh;
+        } else {
+          pointCloudsRef.current.push(mesh);
+        }
+        if (previousMesh.geometry) previousMesh.geometry.dispose();
+        if (previousMesh.material) previousMesh.material.dispose();
+      } else {
+        pointCloudsRef.current.push(mesh);
+      }
+
+      loadedChannels.set(channelIndex, {
+        mesh,
+        sampling,
+        lastRequestedSampling: desiredSampling
+      });
+
+      if (wasVisible && channelConfig.visible !== false) {
+        scene.add(mesh);
+      }
+
+      console.log(`Main_View LOD: Channel ${channelIndex} updated from sampling=${entry.sampling ?? 'n/a'} to sampling=${sampling}`);
+    });
+
+    lodState.lastSampling = desiredSampling;
+    renderScene();
+  };
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 
 const Main_View = ({ channels = [] }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
+  const composerRef = useRef(null);
+  const aaPassRef = useRef(null);
+  const msaaRenderTargetRef = useRef(null);
   const animationRef = useRef(null);
   const pointCloudsRef = useRef([]);
   const loadedChannelsRef = useRef(new Map()); // Store loaded channels by channelIndex
+  const channelDataCacheRef = useRef(new Map());
+  const channelConfigsRef = useRef(new Map());
+  const lodStateRef = useRef({ lastSampling: null, lastUpdate: 0 });
   const keysRef = useRef({});
   
   // Camera state
   const cameraStateRef = useRef({
-    rotation: { x: 0.5, y: 0.5 },
-    distance: 3,
+    rotation: { x:0, y: Math.PI },
+    distance: 0.75,
     panOffset: { x: 0, y: 0, z: 0 }
   });
 
   const moveSpeed = 0.05;
   const fastMoveSpeed = 0.15;
+  const lodCooldownMs = 200;
+
+  const getDesiredSampling = (distance = 3) => {
+    if (distance >= 8) return 6;
+    if (distance >= 5.5) return 4;
+    if (distance >= 3.5) return 3;
+    if (distance >= 2) return 2;
+    return 1;
+  };
 
   // Load channel data
   const loadChannelData = async (channelIndex) => {
@@ -85,7 +184,8 @@ const Main_View = ({ channels = [] }) => {
   };
 
   // Create visualization for a channel
-  const createChannelVisualization = (channelData, channelConfig, scene) => {
+  const createChannelVisualization = (channelData, channelConfig, scene, options = {}) => {
+    const { samplingOverride, addToScene = true } = options;
     const { data, metadata } = channelData;
     const { color, thresholdMin, thresholdMax, opacity } = channelConfig;
     const shape = metadata.shape;
@@ -116,20 +216,25 @@ const Main_View = ({ channels = [] }) => {
     const g = parseInt(hexColor.substr(2, 2), 16) / 255;
     const b = parseInt(hexColor.substr(4, 2), 16) / 255;
 
-    // Create point cloud
+    // Create voxel data
     const points = [];
     const opacities = [];
-    const pointSize = 0.005;
+    const baseOpacityFloor = 0.35;
+    const opacityBoost = 1.3;
+    const maxDim = Math.max(zSize, ySize, xSize);
+    const scaleX = xSize / maxDim;
+    const scaleY = ySize / maxDim;
+    const scaleZ = (zSize / maxDim) / 4; // Maintain existing Z compression
     
     // Adaptive sampling based on data size to prevent memory issues
     // Target: ~1 million points max per channel
     const totalVoxels = zSize * ySize * xSize;
-    const maxPoints = 1000000; // Max points per channel (reduced for safety)
+    const maxPoints = 5000000000; // Max points per channel (higher for smoother visuals)
     let sampling = 1;
     
     // Calculate optimal sampling to stay under max points
     // Estimate: roughly 10-20% of voxels pass threshold
-    const estimatedPassing = totalVoxels * 0.15;
+    const estimatedPassing = totalVoxels * 0.5;
     if (estimatedPassing > maxPoints) {
       // Calculate cubic root for 3D sampling (sample every Nth voxel in each dimension)
       const ratio = estimatedPassing / maxPoints;
@@ -137,13 +242,21 @@ const Main_View = ({ channels = [] }) => {
       sampling = Math.max(2, neededSampling); // At least 2x downsampling
       
       // For very large datasets, use more aggressive downsampling
-      if (totalVoxels > 50000000) {
+      if (totalVoxels > 5000000000) {
         sampling = Math.max(sampling, 4);
       }
+    }
+
+    if (samplingOverride !== undefined) {
+      sampling = Math.max(1, Math.round(samplingOverride));
     }
     
     console.log(`Channel visualization: shape=${shape}, sampling=${sampling}, totalVoxels=${totalVoxels}`);
     console.log(`Channel ${channelConfig.channelIndex}: Data range [${dataMin}, ${dataMax}], Threshold range [${minThreshold}, ${maxThreshold}]`);
+
+    const stepX = (2 / xSize) * scaleX * Math.max(1, sampling);
+    const stepY = (2 / ySize) * scaleY * Math.max(1, sampling);
+    const stepZ = (2 / zSize) * scaleZ * Math.max(1, sampling);
 
     // Sample and filter points with adaptive sampling
     let pointCount = 0;
@@ -164,17 +277,10 @@ const Main_View = ({ channels = [] }) => {
               break;
             }
             pointCount++;
-            // Normalize coordinates with correct aspect ratio
-            const maxDim = Math.max(zSize, ySize, xSize);
-            const scaleX = xSize / maxDim;
-            const scaleY = ySize / maxDim;
-            const scaleZ = (zSize / maxDim) / 4; // Z compressed 4x
-
             // Normalize to [-1, 1] with aspect ratio
             const nx = ((x / xSize) * 2 - 1) * scaleX;
             const ny = ((y / ySize) * 2 - 1) * scaleY;
             const nz = ((z / zSize) * 2 - 1) * scaleZ;
-
             points.push(nx, ny, nz);
 
             // Calculate opacity based on original value
@@ -183,7 +289,8 @@ const Main_View = ({ channels = [] }) => {
             // For max value: opacity = 1
             // For value 15000 (if max is 32736): opacity ≈ 0.458
             const pointOpacity = dataMax > 0 ? actualValue / dataMax : 0;
-            const clampedOpacity = Math.max(0, Math.min(1, pointOpacity));
+            const boostedOpacity = Math.min(1, pointOpacity * opacityBoost);
+            const clampedOpacity = Math.max(baseOpacityFloor, boostedOpacity);
             opacities.push(clampedOpacity);
           }
           if (pointCount >= maxPoints) break;
@@ -193,9 +300,9 @@ const Main_View = ({ channels = [] }) => {
       if (pointCount >= maxPoints) break;
     }
     
-    console.log(`Channel ${channelConfig.channelIndex}: Created ${pointCount} points with sampling=${sampling}`);
+    console.log(`Channel ${channelConfig.channelIndex}: Created ${pointCount} voxels with sampling=${sampling}`);
 
-    // Create sphere geometry
+    // Create voxel geometry
     const numPoints = points.length / 3;
     if (numPoints === 0) {
       console.warn(`Channel ${channelConfig.channelIndex}: No points pass the threshold range [${minThreshold.toLocaleString()}, ${maxThreshold.toLocaleString()}]`);
@@ -204,75 +311,134 @@ const Main_View = ({ channels = [] }) => {
       return null;
     }
     
-    console.log(`Channel ${channelConfig.channelIndex}: Creating ${numPoints} points with fixed color ${color} and variable opacity`);
+    console.log(`Channel ${channelConfig.channelIndex}: Preparing instanced voxel mesh (${numPoints} instances, sampling=${sampling})`);
 
-    const sphereGeometry = new THREE.SphereGeometry(pointSize, 8, 8);
-    const instancedMesh = new THREE.InstancedMesh(sphereGeometry, null, numPoints);
+    const baseGeometry = new THREE.BoxGeometry(stepX, stepY, stepZ);
+    baseGeometry.translate(0, 0, 0);
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.copy(baseGeometry);
+    baseGeometry.dispose();
+    geometry.instanceCount = numPoints;
+    geometry.setAttribute(
+      'instanceOffset',
+      new THREE.InstancedBufferAttribute(new Float32Array(points), 3)
+    );
+    geometry.setAttribute(
+      'instanceOpacity',
+      new THREE.InstancedBufferAttribute(new Float32Array(opacities), 1)
+    );
 
-    // Create opacity attribute for per-instance opacity
-    const opacityArray = new Float32Array(numPoints);
-    for (let i = 0; i < numPoints; i++) {
-      opacityArray[i] = opacities[i];
-    }
-    instancedMesh.geometry.setAttribute('opacity', new THREE.InstancedBufferAttribute(opacityArray, 1));
-
-    // Create custom shader material with fixed color and variable opacity
-    const customShaderMaterial = new THREE.ShaderMaterial({
+    const voxelMaterial = new THREE.ShaderMaterial({
       uniforms: {
-        color: { value: new THREE.Color(r, g, b) }
+        color: { value: new THREE.Color(r, g, b) },
+        lightDirection: { value: new THREE.Vector3(0, 0, 1) },
+        ambientColor: { value: new THREE.Color(0.95, 0.95, 0.95) },
+        specularColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
+        shininess: { value: 1.0 },
+        brightness: { value: 2.0 },
+        opacityBoost: { value: opacityBoost },
+        edgeFeather: { value: 0.99 }
       },
       vertexShader: `
-        attribute float opacity;
+        attribute vec3 instanceOffset;
+        attribute float instanceOpacity;
         varying float vOpacity;
+        varying vec3 vWorldPos;
+        varying vec3 vViewDir;
+        varying vec3 vNormal;
+        varying vec3 vLocalPos;
         void main() {
-          vOpacity = opacity;
-          vec3 transformed = (instanceMatrix * vec4(position, 1.0)).xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
+          vOpacity = instanceOpacity;
+          vec3 transformed = position + instanceOffset;
+          vNormal = normalize(normalMatrix * normal);
+          vLocalPos = position;
+          vec4 worldPosition = modelMatrix * vec4(transformed, 1.0);
+          vWorldPos = worldPosition.xyz;
+          vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+          vViewDir = normalize(-mvPosition.xyz);
+          gl_Position = projectionMatrix * mvPosition;
         }
       `,
       fragmentShader: `
         uniform vec3 color;
+        uniform float opacityBoost;
+        uniform vec3 lightDirection;
+        uniform vec3 ambientColor;
+        uniform vec3 specularColor;
+        uniform float shininess;
+        uniform float brightness;
+        uniform float edgeFeather;
         varying float vOpacity;
+        varying vec3 vWorldPos;
+        varying vec3 vViewDir;
+        varying vec3 vNormal;
+        varying vec3 vLocalPos;
         void main() {
-          // Completely unlit - direct color output without any lighting calculation
-          // This ensures uniform brightness from all angles regardless of rotation
-          // Use gamma correction for better visibility
-          vec3 finalColor = color;
-          // Apply slight gamma correction for better visibility (optional)
-          finalColor = pow(finalColor, vec3(0.9));
-          gl_FragColor = vec4(finalColor, vOpacity);
+          vec3 normal = normalize(vNormal);
+          vec3 V = normalize(vViewDir);
+          vec3 L = normalize(V);
+          float diffuse = max(dot(normal, L), 0.0);
+          vec3 R = reflect(-L, normal);
+          float spec = pow(max(dot(R, V), 0.0), shininess);
+          float base = clamp(vOpacity * opacityBoost, 0.0, 1.0);
+          float edge = max(max(abs(vLocalPos.x), abs(vLocalPos.y)), abs(vLocalPos.z));
+          float edgeFade = smoothstep(0.5 - edgeFeather, 0.5, edge);
+          base *= (1.0 - edgeFade);
+          vec3 baseColor = pow(color, vec3(0.55));
+          vec3 lighting = ambientColor + diffuse * baseColor + spec * specularColor;
+          vec3 finalColor = lighting * brightness;
+          float alpha = clamp(base, 0.0, 1.0);
+          if (alpha <= 0.01) discard;
+          gl_FragColor = vec4(finalColor * alpha, alpha);
         }
       `,
       transparent: true,
-      side: THREE.DoubleSide
+      depthWrite: true,
+      depthTest: true,
+      blending: THREE.NormalBlending
     });
 
-    // Set up instances
-    const matrix = new THREE.Matrix4();
-    const threeColor = new THREE.Color(r, g, b);
+    const pointsObject = new THREE.Mesh(geometry, voxelMaterial);
+    pointsObject.frustumCulled = false;
+    pointsObject.userData = { channelIndex: channelConfig.channelIndex, sampling };
 
-    for (let i = 0; i < numPoints; i++) {
-      matrix.makeTranslation(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]);
-      instancedMesh.setMatrixAt(i, matrix);
-      // Set fixed color for all instances
-      instancedMesh.setColorAt(i, threeColor);
+    if (addToScene) {
+      scene.add(pointsObject);
+      console.log(`Channel ${channelConfig.channelIndex}: Voxel mesh added to scene (${numPoints} instances, sampling=${sampling})`);
+    } else {
+      console.log(`Channel ${channelConfig.channelIndex}: Voxel mesh created off-scene (${numPoints} instances, sampling=${sampling})`);
     }
-
-    instancedMesh.instanceColor.needsUpdate = true;
-    instancedMesh.material = customShaderMaterial;
-    
-    // Store channel index for reference
-    instancedMesh.userData = { channelIndex: channelConfig.channelIndex };
-
-    scene.add(instancedMesh);
-    
-    console.log(`Channel ${channelConfig.channelIndex}: Point cloud added to scene with ${numPoints} points`);
     
     // Clear arrays to free memory
     points.length = 0;
     opacities.length = 0;
     
-    return instancedMesh;
+    return { mesh: pointsObject, sampling };
+  };
+
+  const updateLighting = () => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    pointCloudsRef.current.forEach(mesh => {
+      const material = mesh?.material;
+      if (material && material.uniforms && material.uniforms.lightDirection) {
+        material.uniforms.lightDirection.value.copy(direction);
+      }
+    });
+  };
+
+  const renderScene = () => {
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    if (!scene || !camera) return;
+    updateLighting();
+    if (composerRef.current) {
+      composerRef.current.render();
+    } else if (rendererRef.current) {
+      rendererRef.current.render(scene, camera);
+    }
   };
 
   // Update camera position
@@ -293,6 +459,7 @@ const Main_View = ({ channels = [] }) => {
     cameraRef.current.position.x = lookAtPoint.x + radius * Math.sin(theta) * Math.cos(phi);
     cameraRef.current.position.y = lookAtPoint.y + radius * Math.sin(phi);
     cameraRef.current.position.z = lookAtPoint.z + radius * Math.cos(theta) * Math.cos(phi);
+    cameraRef.current.up.set(0, -1, 0);
     cameraRef.current.lookAt(lookAtPoint);
   };
 
@@ -367,6 +534,7 @@ const Main_View = ({ channels = [] }) => {
 
     if (moved) {
       updateCameraPosition();
+      updateChannelLOD();
     }
   };
 
@@ -395,13 +563,53 @@ const Main_View = ({ channels = [] }) => {
     });
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     // Ensure consistent output regardless of lighting
     if (renderer.outputEncoding !== undefined) {
       renderer.outputEncoding = THREE.sRGBEncoding;
     }
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    // Post-processing composer (MSAA when available, otherwise FXAA fallback)
+    let renderTarget = null;
+    if (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget) {
+      const samples = window.devicePixelRatio > 1 ? 4 : 2;
+      renderTarget = new THREE.WebGLMultisampleRenderTarget(width, height, {
+        format: THREE.RGBAFormat,
+        encoding: renderer.outputEncoding
+      });
+      renderTarget.samples = samples;
+      msaaRenderTargetRef.current = renderTarget;
+      console.log(`Main_View: MSAA render target enabled with ${samples}x samples`);
+    } else {
+      msaaRenderTargetRef.current = null;
+      console.log('Main_View: MSAA not available, using FXAA fallback');
+    }
+
+    const composer = renderTarget
+      ? new EffectComposer(renderer, renderTarget)
+      : new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    let aaPass = null;
+    if (!renderTarget) {
+      try {
+        aaPass = new SMAAPass(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+        composer.addPass(aaPass);
+        console.log('Main_View: SMAA pass enabled');
+      } catch (error) {
+        console.warn('Main_View: SMAA unavailable, falling back to FXAA', error);
+        aaPass = new ShaderPass(FXAAShader);
+        aaPass.material.uniforms['resolution'].value.set(1 / width, 1 / height);
+        composer.addPass(aaPass);
+        console.log('Main_View: FXAA pass enabled');
+      }
+    }
+
+    composerRef.current = composer;
+    aaPassRef.current = aaPass;
 
     // Note: Since we're using a completely unlit shader, lights don't affect the visualization
     // But we keep ambient light for other potential objects in the scene
@@ -446,6 +654,7 @@ const Main_View = ({ channels = [] }) => {
       state.distance *= (1 + e.deltaY * 0.001);
       state.distance = Math.max(0.1, Math.min(20, state.distance));
       updateCameraPosition();
+      updateChannelLOD();
     };
 
     const handleContextMenu = (e) => e.preventDefault();
@@ -480,7 +689,7 @@ const Main_View = ({ channels = [] }) => {
     // Animation loop
     const animate = () => {
       handleMovement();
-      renderer.render(scene, camera);
+      renderScene();
       animationRef.current = requestAnimationFrame(animate);
     };
     animate();
@@ -492,6 +701,19 @@ const Main_View = ({ channels = [] }) => {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      if (composerRef.current) {
+        composerRef.current.setSize(width, height);
+      }
+      if (msaaRenderTargetRef.current) {
+        msaaRenderTargetRef.current.setSize(width, height);
+      }
+      if (aaPassRef.current) {
+        if (aaPassRef.current.setSize) {
+          aaPassRef.current.setSize(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+        } else if (aaPassRef.current.material && aaPassRef.current.material.uniforms && aaPassRef.current.material.uniforms['resolution']) {
+          aaPassRef.current.material.uniforms['resolution'].value.set(1 / width, 1 / height);
+        }
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -516,6 +738,15 @@ const Main_View = ({ channels = [] }) => {
       });
       pointCloudsRef.current = [];
       loadedChannelsRef.current.clear();
+      channelDataCacheRef.current.clear();
+      channelConfigsRef.current.clear();
+      lodStateRef.current = { lastSampling: null, lastUpdate: 0 };
+      if (msaaRenderTargetRef.current) {
+        msaaRenderTargetRef.current.dispose();
+        msaaRenderTargetRef.current = null;
+      }
+      composerRef.current = null;
+      aaPassRef.current = null;
       
       if (container && renderer.domElement) {
         container.removeChild(renderer.domElement);
@@ -533,38 +764,61 @@ const Main_View = ({ channels = [] }) => {
     const scene = sceneRef.current;
     const visibleChannels = channels.filter(c => c.visible !== false);
     const loadedChannels = loadedChannelsRef.current;
+    const channelDataCache = channelDataCacheRef.current;
     
     console.log(`\n${'='.repeat(60)}`);
     console.log(`Main_View: Updating channels`);
     console.log(`Main_View: Total channels: ${channels.length}, Visible: ${visibleChannels.length}`);
     console.log(`${'='.repeat(60)}\n`);
 
+    // Clean up meshes for channels no longer present
+    const activeChannelIndices = new Set(channels.map(c => c.channelIndex));
+    loadedChannels.forEach((entry, channelIndex) => {
+      if (!activeChannelIndices.has(channelIndex)) {
+        const mesh = entry?.mesh;
+        if (mesh && scene.children.includes(mesh)) {
+          scene.remove(mesh);
+        }
+        if (mesh) {
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) mesh.material.dispose();
+          const listIndex = pointCloudsRef.current.indexOf(mesh);
+          if (listIndex !== -1) {
+            pointCloudsRef.current.splice(listIndex, 1);
+          }
+        }
+        loadedChannels.delete(channelIndex);
+        channelDataCache.delete(channelIndex);
+        console.log(`Main_View: 🗑️ Removed channel ${channelIndex} (no longer in selection)`);
+      }
+    });
+
     // Update visibility for existing channels (already loaded)
+    const configMap = channelConfigsRef.current;
+    configMap.clear();
     channels.forEach(channelConfig => {
       const channelIndex = channelConfig.channelIndex;
-      const pointCloud = loadedChannels.get(channelIndex);
+      configMap.set(channelIndex, channelConfig);
+      const entry = loadedChannels.get(channelIndex);
+      const mesh = entry ? entry.mesh : null;
       
-      if (pointCloud) {
+      if (mesh) {
         // Channel already loaded, just update visibility based on checkbox state
         if (channelConfig.visible !== false) {
           // Checkbox is checked - should be visible
-          if (!scene.children.includes(pointCloud)) {
-            scene.add(pointCloud);
+          if (!scene.children.includes(mesh)) {
+            scene.add(mesh);
             console.log(`Main_View: ✅ Channel ${channelIndex} turned ON (checkbox checked)`);
             // Force renderer update
-            if (rendererRef.current) {
-              rendererRef.current.render(scene, cameraRef.current);
-            }
+            renderScene();
           }
         } else {
           // Checkbox is unchecked - should be hidden
-          if (scene.children.includes(pointCloud)) {
-            scene.remove(pointCloud);
+          if (scene.children.includes(mesh)) {
+            scene.remove(mesh);
             console.log(`Main_View: ⚠️ Channel ${channelIndex} turned OFF (checkbox unchecked)`);
             // Force renderer update
-            if (rendererRef.current) {
-              rendererRef.current.render(scene, cameraRef.current);
-            }
+            renderScene();
           }
         }
       }
@@ -580,9 +834,7 @@ const Main_View = ({ channels = [] }) => {
       
       if (channelsToLoad.length === 0) {
         console.log(`Main_View: All visible channels already loaded or no visible channels to load`);
-        if (rendererRef.current && scene && cameraRef.current) {
-          rendererRef.current.render(scene, cameraRef.current);
-        }
+        renderScene();
         return;
       }
       
@@ -604,30 +856,37 @@ const Main_View = ({ channels = [] }) => {
           const channelData = await loadChannelData(channelConfig.channelIndex);
           if (channelData) {
             console.log(`Main_View: Channel ${channelConfig.channelIndex} data loaded successfully`);
-            const pointCloud = createChannelVisualization(channelData, channelConfig, scene);
-            if (pointCloud) {
+            channelDataCacheRef.current.set(channelConfig.channelIndex, channelData);
+            const desiredSampling = getDesiredSampling(cameraStateRef.current?.distance || 3);
+            const addToScene = channelConfig.visible !== false;
+            const result = createChannelVisualization(channelData, channelConfig, scene, {
+              samplingOverride: desiredSampling,
+              addToScene
+            });
+            if (result) {
+              const { mesh, sampling } = result;
               // Store in map (even if not visible, so we can quickly add it later)
-              loadedChannels.set(channelConfig.channelIndex, pointCloud);
-              pointCloudsRef.current.push(pointCloud);
+              loadedChannels.set(channelConfig.channelIndex, { mesh, sampling, lastRequestedSampling: desiredSampling });
+              lodStateRef.current.lastSampling = sampling;
+              pointCloudsRef.current.push(mesh);
               
-              // Only add to scene if checkbox is still checked
-              if (channelConfig.visible !== false) {
-                scene.add(pointCloud);
-                console.log(`Main_View: ✅ Channel ${channelConfig.channelIndex} (color: ${channelConfig.color}) added to scene`);
+              if (addToScene) {
+                if (!scene.children.includes(mesh)) {
+                  scene.add(mesh);
+                }
+                console.log(`Main_View:  Channel ${channelConfig.channelIndex} (color: ${channelConfig.color}) added to scene with sampling=${sampling}`);
               } else {
-                console.log(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} loaded but not added (checkbox unchecked)`);
+                if (scene.children.includes(mesh)) {
+                  scene.remove(mesh);
+                }
+                console.log(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} loaded but not added (checkbox unchecked, sampling=${sampling})`);
               }
               
               // Force renderer to update
-              if (rendererRef.current) {
-                rendererRef.current.render(scene, cameraRef.current);
-              }
+              renderScene();
             } else {
-              console.warn(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} visualization creation returned null (no points created)`);
+              console.warn(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} visualization creation returned null (no voxels created)`);
             }
-            // Clear channelData to free memory (data array is large)
-            channelData.data = null;
-            channelData.metadata = null;
           } else {
             console.warn(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} - Data file not found. Please create visualization data for this channel.`);
             console.warn(`Main_View: Expected file: visualization_data/channel_${channelConfig.channelIndex}_data.raw or channel_${channelConfig.channelIndex}_napari_data.raw`);
@@ -642,12 +901,12 @@ const Main_View = ({ channels = [] }) => {
       }
       
       const visibleCount = visibleChannels.filter(c => {
-        const pointCloud = loadedChannels.get(c.channelIndex);
-        return pointCloud && scene.children.includes(pointCloud);
+        const entry = loadedChannels.get(c.channelIndex);
+        return entry && entry.mesh && scene.children.includes(entry.mesh);
       }).length;
       const hiddenCount = channels.length - visibleChannels.length;
       console.log(`\n${'='.repeat(60)}`);
-      console.log(`Main_View: ✅ Channel update complete`);
+      console.log(`Main_View:  Channel update complete`);
       console.log(`Main_View: Visible channels in scene: ${visibleCount}/${visibleChannels.length}`);
       if (hiddenCount > 0) {
         console.log(`Main_View: Hidden channels (unchecked): ${hiddenCount}`);
@@ -655,9 +914,7 @@ const Main_View = ({ channels = [] }) => {
       console.log(`${'='.repeat(60)}\n`);
       
       // Final render after all channels loaded
-      if (rendererRef.current && scene && cameraRef.current) {
-        rendererRef.current.render(scene, cameraRef.current);
-      }
+      renderScene();
     };
 
     loadChannels();
