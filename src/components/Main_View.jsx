@@ -83,6 +83,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 
 const Main_View = ({ channels = [] }) => {
   const mountRef = useRef(null);
@@ -90,7 +91,8 @@ const Main_View = ({ channels = [] }) => {
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
   const composerRef = useRef(null);
-  const fxaaPassRef = useRef(null);
+  const aaPassRef = useRef(null);
+  const msaaRenderTargetRef = useRef(null);
   const animationRef = useRef(null);
   const pointCloudsRef = useRef([]);
   const loadedChannelsRef = useRef(new Map()); // Store loaded channels by channelIndex
@@ -569,17 +571,45 @@ const Main_View = ({ channels = [] }) => {
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Post-processing composer with FXAA for smoother visuals
-    const composer = new EffectComposer(renderer);
+    // Post-processing composer (MSAA when available, otherwise FXAA fallback)
+    let renderTarget = null;
+    if (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget) {
+      const samples = window.devicePixelRatio > 1 ? 4 : 2;
+      renderTarget = new THREE.WebGLMultisampleRenderTarget(width, height, {
+        format: THREE.RGBAFormat,
+        encoding: renderer.outputEncoding
+      });
+      renderTarget.samples = samples;
+      msaaRenderTargetRef.current = renderTarget;
+      console.log(`Main_View: MSAA render target enabled with ${samples}x samples`);
+    } else {
+      msaaRenderTargetRef.current = null;
+      console.log('Main_View: MSAA not available, using FXAA fallback');
+    }
+
+    const composer = renderTarget
+      ? new EffectComposer(renderer, renderTarget)
+      : new EffectComposer(renderer);
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
-    const fxaaPass = new ShaderPass(FXAAShader);
-    fxaaPass.material.uniforms['resolution'].value.set(1 / width, 1 / height);
-    composer.addPass(fxaaPass);
+    let aaPass = null;
+    if (!renderTarget) {
+      try {
+        aaPass = new SMAAPass(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+        composer.addPass(aaPass);
+        console.log('Main_View: SMAA pass enabled');
+      } catch (error) {
+        console.warn('Main_View: SMAA unavailable, falling back to FXAA', error);
+        aaPass = new ShaderPass(FXAAShader);
+        aaPass.material.uniforms['resolution'].value.set(1 / width, 1 / height);
+        composer.addPass(aaPass);
+        console.log('Main_View: FXAA pass enabled');
+      }
+    }
 
     composerRef.current = composer;
-    fxaaPassRef.current = fxaaPass;
+    aaPassRef.current = aaPass;
 
     // Note: Since we're using a completely unlit shader, lights don't affect the visualization
     // But we keep ambient light for other potential objects in the scene
@@ -674,8 +704,15 @@ const Main_View = ({ channels = [] }) => {
       if (composerRef.current) {
         composerRef.current.setSize(width, height);
       }
-      if (fxaaPassRef.current) {
-        fxaaPassRef.current.material.uniforms['resolution'].value.set(1 / width, 1 / height);
+      if (msaaRenderTargetRef.current) {
+        msaaRenderTargetRef.current.setSize(width, height);
+      }
+      if (aaPassRef.current) {
+        if (aaPassRef.current.setSize) {
+          aaPassRef.current.setSize(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
+        } else if (aaPassRef.current.material && aaPassRef.current.material.uniforms && aaPassRef.current.material.uniforms['resolution']) {
+          aaPassRef.current.material.uniforms['resolution'].value.set(1 / width, 1 / height);
+        }
       }
     };
     window.addEventListener('resize', handleResize);
@@ -704,6 +741,12 @@ const Main_View = ({ channels = [] }) => {
       channelDataCacheRef.current.clear();
       channelConfigsRef.current.clear();
       lodStateRef.current = { lastSampling: null, lastUpdate: 0 };
+      if (msaaRenderTargetRef.current) {
+        msaaRenderTargetRef.current.dispose();
+        msaaRenderTargetRef.current = null;
+      }
+      composerRef.current = null;
+      aaPassRef.current = null;
       
       if (container && renderer.domElement) {
         container.removeChild(renderer.domElement);
