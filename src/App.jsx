@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Title from './components/Title';
 import ChannelSelection from './components/ChannelSelection';
 import Region_Selection from './components/Region_Selection';
@@ -19,19 +19,19 @@ function App() {
   const [channels, setChannels] = useState([]);
   const [selectedRegions, setSelectedRegions] = useState([]);
   const [presetVersion, setPresetVersion] = useState(0);
-  const channelIdCounterRef = useRef(0);
+  const lastAggregatedSignatureRef = useRef('');
 
   const handleChannelsChange = useCallback((updatedChannels) => {
     setChannels(updatedChannels);
   }, []);
 
   const buildAggregatedChannels = useCallback((regions) => {
-    channelIdCounterRef.current = 0;
     return regions.flatMap((region) =>
-      region.channels.map((channel) => ({
+      region.channels.map((channel, index) => ({
         ...channel,
-        id: channelIdCounterRef.current++,
-        visible: true,
+        id: channel.id ?? `${region.id}-${channel.channelIndex ?? index}`,
+        regionId: region.id,
+        visible: channel.visible !== false,
         opacity: channel.opacity ?? 1
       }))
     );
@@ -52,21 +52,26 @@ function App() {
         nextRegions = prevRegions.filter((region) => region.id !== regionPayload.id);
       }
 
-      const aggregatedChannels = buildAggregatedChannels(nextRegions);
-      setChannels(aggregatedChannels);
-      setPresetVersion((prev) => prev + 1);
-
       return nextRegions;
     });
   }, [buildAggregatedChannels]);
 
+  const aggregatedRegionChannels = useMemo(
+    () => buildAggregatedChannels(selectedRegions),
+    [selectedRegions, buildAggregatedChannels]
+  );
+
+  const aggregatedSignature = useMemo(
+    () => aggregatedRegionChannels.map((channel) => `${channel.regionId}-${channel.channelIndex}`).join('|'),
+    [aggregatedRegionChannels]
+  );
+
   useEffect(() => {
-    if (selectedRegions.length === 0 && channels.length !== 0) {
-      channelIdCounterRef.current = 0;
-      setChannels([]);
-      setPresetVersion((prev) => prev + 1);
-    }
-  }, [selectedRegions.length, channels.length]);
+    if (aggregatedSignature === lastAggregatedSignatureRef.current) return;
+    lastAggregatedSignatureRef.current = aggregatedSignature;
+    setChannels(aggregatedRegionChannels);
+    setPresetVersion((prev) => prev + 1);
+  }, [aggregatedSignature, aggregatedRegionChannels]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#000000', position: 'fixed', top: 0, left: 0 }}>

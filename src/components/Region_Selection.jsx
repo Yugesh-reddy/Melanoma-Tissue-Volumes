@@ -208,14 +208,15 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
         }
 
         return {
-          id: channelIndex ?? index,
+          id: `${region.id}-${channelIndex ?? index}`,
           channelIndex,
           color: colorHex,
           thresholdMin: undefined,
           thresholdMax: undefined,
           opacity: 1,
           visible: true,
-          markerName: marker
+          markerName: marker,
+          regionId: region.id
         };
       })
       .filter(Boolean);
