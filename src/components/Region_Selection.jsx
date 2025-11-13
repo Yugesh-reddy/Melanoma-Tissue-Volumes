@@ -156,7 +156,6 @@ const buildLookupTables = (names) => {
 };
 
 const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
-  const [hoveredRegionId, setHoveredRegionId] = useState(null);
 
   const lookupTables = useMemo(
     () => buildLookupTables(channelNamesData || []),
@@ -210,7 +209,7 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
         }
 
         return {
-          id: `region-${region.id}-${index}`,
+          id: channelIndex ?? index,
           channelIndex,
           color: colorHex,
           thresholdMin: undefined,
@@ -270,32 +269,19 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {REGION_DEFINITIONS.map((region) => {
           const isSelected = selectedRegionId === region.id;
-          const isHovered = hoveredRegionId === region.id;
 
           return (
             <label
               key={region.id}
-              onMouseEnter={() => setHoveredRegionId(region.id)}
-              onMouseLeave={() => setHoveredRegionId(null)}
               style={{
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: '12px',
                 width: '100%',
-                background: isSelected
-                  ? 'linear-gradient(135deg, rgba(255,255,255,0.12), rgba(0,0,0,0.2))'
-                  : '#111',
-                border: isSelected ? '1px solid #2d7ff9' : '1px solid #333',
-                borderRadius: '8px',
-                padding: '12px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'transform 0.15s ease, border 0.15s ease, box-shadow 0.15s ease',
-                boxShadow: isSelected
-                  ? '0 0 12px rgba(45, 127, 249, 0.35)'
-                  : isHovered
-                    ? '0 0 8px rgba(255, 255, 255, 0.12)'
-                    : 'none'
+                background: isSelected ? '#1a1d29' : '#0f1016',
+                borderRadius: '6px',
+                padding: '10px 12px',
+                cursor: 'pointer'
               }}
             >
               <input
@@ -303,29 +289,62 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
                 checked={isSelected}
                 onChange={(event) => handleRegionToggle(region, event.target.checked)}
                 style={{
-                  width: '18px',
-                  height: '18px',
-                  marginTop: '2px',
-                  cursor: 'pointer',
-                  accentColor: '#2d7ff9',
-                  flexShrink: 0
+                  position: 'absolute',
+                  opacity: 0,
+                  pointerEvents: 'none'
                 }}
               />
+              <div
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '5px',
+                  border: isSelected ? '1px solid #1f57b8' : '1px solid #5a5f73',
+                  backgroundColor: isSelected ? '#2d7ff9' : '#12131d',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '1px',
+                  transition: 'background-color 0.15s ease, border 0.15s ease'
+                }}
+              >
+                {isSelected && (
+                  <svg
+                    viewBox="0 0 16 16"
+                    style={{
+                      width: '12px',
+                      height: '12px'
+                    }}
+                  >
+                    <polyline
+                      points="3.2 8.6 6.4 11.6 12.4 4.4"
+                      style={{
+                        fill: 'none',
+                        stroke: '#ffffff',
+                        strokeWidth: '2.1',
+                        strokeLinecap: 'round',
+                        strokeLinejoin: 'round'
+                      }}
+                    />
+                  </svg>
+                )}
+              </div>
 
               <div style={{ flex: 1 }}>
                 <div
                   style={{
                     color: 'white',
                     fontSize: '14px',
-                    fontWeight: 600,
-                    marginBottom: '6px'
+                    fontWeight: 500,
+                    marginBottom: '4px'
                   }}
                 >
                   {region.title}
                 </div>
                 <div
                   style={{
-                    color: '#cccccc',
+                    color: '#b9bed0',
                     fontSize: '12px',
                     lineHeight: 1.4
                   }}
@@ -341,51 +360,30 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
       {selectedRegion && (
         <div
           style={{
-            marginTop: '4px',
-            padding: '14px',
-            borderRadius: '10px',
-            border: '1px solid #2d7ff9',
-            background: 'linear-gradient(135deg, rgba(45,127,249,0.12), rgba(13,17,23,0.9))',
-            color: '#f0f6ff',
+            marginTop: '6px',
+            padding: '12px',
+            borderRadius: '8px',
+            background: '#10121c',
+            color: '#f4f6ff',
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px'
+            gap: '6px'
           }}
         >
-          <div style={{ fontSize: '15px', fontWeight: 600 }}>
+          <div style={{ fontSize: '14px', fontWeight: 600 }}>
             {selectedRegion.title}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ fontSize: '12px', letterSpacing: '0.2px', color: '#c8dcff' }}>
-              Top 4 channels for visualization:
-            </div>
-            {selectedRegion.markers.slice(0, 4).map((marker, index) => {
-              const color = selectedRegion.palette[index] || selectedRegion.palette[selectedRegion.palette.length - 1];
-              const swatch = rgbToHex(color[0], color[1], color[2]);
-              return (
-                <div
-                  key={`${selectedRegion.id}-preview-${marker}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}
-                >
-                  <span
-                    style={{
-                      width: '14px',
-                      height: '14px',
-                      borderRadius: '3px',
-                      backgroundColor: swatch,
-                      border: '1px solid rgba(255,255,255,0.25)'
-                    }}
-                  />
-                  <span>{marker}</span>
-                </div>
-              );
-            })}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontSize: '12px', color: '#c3c8db' }}>Top 4 markers:</div>
+            {selectedRegion.markers.slice(0, 4).map((marker) => (
+              <div key={`${selectedRegion.id}-selected-${marker}`} style={{ fontSize: '12px' }}>
+                {marker}
+              </div>
+            ))}
           </div>
 
-          <div style={{ fontSize: '12px', color: '#c8dcff', marginTop: '4px' }}>
-            All region markers:
-          </div>
+          <div style={{ fontSize: '12px', color: '#c3c8db', marginTop: '2px' }}>All markers:</div>
           <div
             style={{
               display: 'flex',
@@ -398,10 +396,10 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
               <span
                 key={`${selectedRegion.id}-marker-${marker}`}
                 style={{
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  backgroundColor: 'rgba(45, 127, 249, 0.18)',
-                  border: '1px solid rgba(45, 127, 249, 0.32)'
+                  padding: '4px 6px',
+                  borderRadius: '4px',
+                  backgroundColor: '#1b1f2d',
+                  border: '1px solid #2a3045'
                 }}
               >
                 {marker}

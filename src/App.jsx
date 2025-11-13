@@ -18,16 +18,18 @@ const rgbToHex = (r, g, b) => {
 function App() {
   const [channels, setChannels] = useState([]);
   const [activeRegion, setActiveRegion] = useState(null);
+  const [presetVersion, setPresetVersion] = useState(0);
 
   const handleChannelsChange = useCallback((updatedChannels) => {
     setChannels(updatedChannels);
-    setActiveRegion((prev) => (prev ? null : prev));
+    setActiveRegion(null);
   }, []);
 
-  const handleRegionSelect = (regionPayload) => {
+  const handleRegionSelect = useCallback((regionPayload) => {
     if (!regionPayload) {
       setChannels([]);
       setActiveRegion(null);
+      setPresetVersion((prev) => prev + 1);
       return;
     }
 
@@ -37,7 +39,8 @@ function App() {
       title: regionPayload.title,
       topMarkers: regionPayload.topMarkers
     });
-  };
+    setPresetVersion((prev) => prev + 1);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#000000', position: 'fixed', top: 0, left: 0 }}>
@@ -54,7 +57,11 @@ function App() {
         <div style={{ width: '25%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Channel Selection - 40% of sidebar height */}
           <div style={{ height: '45%' }}>
-            <ChannelSelection onChannelsChange={handleChannelsChange} />
+            <ChannelSelection
+              onChannelsChange={handleChannelsChange}
+              presetChannels={channels}
+              presetVersion={presetVersion}
+            />
           </div>
           {/* Region Selection - 55% of sidebar height */}
           <div style={{ height: '55%' }}>
