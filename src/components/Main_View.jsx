@@ -703,7 +703,7 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
         loadedChannels.delete(channelIndex);
         channelDataCache.delete(channelIndex);
         mesh = null;
-        console.log(`Main_View: ♻️ Channel ${channelIndex} flagged for reload due to configuration change`);
+        console.log(`Main_View:  Channel ${channelIndex} flagged for reload due to configuration change`);
       }
 
       if (mesh) {
@@ -711,11 +711,11 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
         const currentlyInScene = scene.children.includes(mesh);
         if (isVisible && !currentlyInScene) {
           scene.add(mesh);
-          console.log(`Main_View: ✅ Channel ${channelIndex} turned ON`);
+          console.log(`Main_View:  Channel ${channelIndex} turned ON`);
           renderScene();
         } else if (!isVisible && currentlyInScene) {
           scene.remove(mesh);
-          console.log(`Main_View: ⚠️ Channel ${channelIndex} turned OFF`);
+          console.log(`Main_View:  Channel ${channelIndex} turned OFF`);
           renderScene();
         }
       }
@@ -737,7 +737,7 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
         try {
           const currentConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
           if (!currentConfig || getConfigSignature(currentConfig) !== getConfigSignature(channelConfig)) {
-            console.log(`Main_View: ⏭️ Skipping stale load for channel ${channelConfig.channelIndex}`);
+            console.log(`Main_View:  Skipping stale load for channel ${channelConfig.channelIndex}`);
             continue;
           }
 
@@ -751,7 +751,7 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
 
           const latestConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
           if (!latestConfig || getConfigSignature(latestConfig) !== getConfigSignature(channelConfig)) {
-            console.log(`Main_View: ⏹️ Loaded data discarded for channel ${channelConfig.channelIndex} (stale)`);
+            console.log(`Main_View:  Loaded data discarded for channel ${channelConfig.channelIndex} (stale)`);
             continue;
           }
 
@@ -774,17 +774,17 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
             if (channelConfig.visible !== false) {
               scene.add(mesh);
               mesh.renderOrder = 1;
-              console.log(`Main_View: ✅ Channel ${channelConfig.channelIndex} added (sampling=${sampling})`);
+              console.log(`Main_View:  Channel ${channelConfig.channelIndex} added (sampling=${sampling})`);
             } else {
-              console.log(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} prepared but not visible`);
+              console.log(`Main_View:  Channel ${channelConfig.channelIndex} prepared but not visible`);
             }
 
             renderScene();
           } else {
-            console.warn(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} produced no voxels`);
+            console.warn(`Main_View:  Channel ${channelConfig.channelIndex} produced no voxels`);
           }
         } catch (error) {
-          console.error(`Main_View: ❌ Error loading channel ${channelConfig.channelIndex}:`, error);
+          console.error(`Main_View:  Error loading channel ${channelConfig.channelIndex}:`, error);
         }
 
         await new Promise((resolve) => setTimeout(resolve, 100));
