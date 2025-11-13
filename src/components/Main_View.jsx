@@ -15,12 +15,14 @@ const CAMERA_INITIAL_STATE = {
 const MOVE_SPEED = 0.05;
 const FAST_MOVE_SPEED = 0.15;
 const LOD_COOLDOWN_MS = 200;
-const MAX_POINTS_PER_CHANNEL = 100_000;
+const MAX_POINTS_PER_CHANNEL = 1_000_000;
 const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
 const EDGE_FEATHER = 0.99;
 const JITTER_SCALE = 0.1;
 const AMBIENT_COLOR = new THREE.Color(0.9, 0.9, 0.95);
+const DEFAULT_THRESHOLD_MIN_FRACTION = 0.1;
+const DEFAULT_THRESHOLD_MAX_FRACTION = 0.9;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -136,9 +138,12 @@ const Main_View = ({ channels = [], activeRegion }) => {
     if (!zSize || !ySize || !xSize) return null;
 
     const [dataMin = 0, dataMax = 65535] = metadata.dataRange || [];
+    const rangeSpan = Math.max(1, dataMax - dataMin);
+    const autoMin = Math.round(dataMin + rangeSpan * DEFAULT_THRESHOLD_MIN_FRACTION);
+    const autoMax = Math.round(dataMin + rangeSpan * DEFAULT_THRESHOLD_MAX_FRACTION);
 
-    let minThreshold = thresholdMin ?? dataMin;
-    let maxThreshold = thresholdMax ?? dataMax;
+    let minThreshold = thresholdMin ?? autoMin;
+    let maxThreshold = thresholdMax ?? autoMax;
     if (minThreshold > maxThreshold) {
       [minThreshold, maxThreshold] = [maxThreshold, minThreshold];
     }
