@@ -15,7 +15,7 @@ const CAMERA_INITIAL_STATE = {
 const MOVE_SPEED = 0.05;
 const FAST_MOVE_SPEED = 0.15;
 const LOD_COOLDOWN_MS = 200;
-const MAX_POINTS_PER_CHANNEL = 5000_000;
+const MAX_POINTS_PER_CHANNEL = 100_000;
 const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
 const EDGE_FEATHER = 0.99;
@@ -64,7 +64,7 @@ const getConfigSignature = (config) =>
     config.opacity ?? ''
   ].join('|');
 
-const Main_View = ({ channels = [] }) => {
+const Main_View = ({ channels = [], activeRegion }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -160,19 +160,20 @@ const Main_View = ({ channels = [] }) => {
     const scaleZ = (zSize / maxDim) / 4;
 
     const totalVoxels = zSize * ySize * xSize;
-    const estimatedPassing = totalVoxels * 0.15;
+    const estimatedPassing = totalVoxels * 0.08;
     let sampling = 1;
 
     if (estimatedPassing > MAX_POINTS_PER_CHANNEL) {
       const ratio = estimatedPassing / MAX_POINTS_PER_CHANNEL;
-      sampling = Math.max(2, Math.ceil(Math.cbrt(ratio * 1.5)));
-      if (totalVoxels > 5000_000) {
+      sampling = Math.max(2, Math.ceil(Math.cbrt(Math.max(ratio, 1) * 2)));
+      if (totalVoxels > 400_000) {
         sampling = Math.max(sampling, 4);
       }
     }
 
     if (samplingOverride !== undefined) {
-      sampling = Math.max(1, Math.round(samplingOverride));
+      const overrideValue = Math.max(1, Math.round(samplingOverride));
+      sampling = Math.max(sampling, overrideValue);
     }
 
     console.log(`Channel visualization: shape=${metadata.shape}, sampling=${sampling}, totalVoxels=${totalVoxels}`);
@@ -452,8 +453,8 @@ const Main_View = ({ channels = [] }) => {
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    if (renderer.outputEncoding !== undefined) {
-      renderer.outputEncoding = THREE.sRGBEncoding;
+    if (renderer.outputColorSpace !== undefined) {
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
     }
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -786,6 +787,52 @@ const Main_View = ({ channels = [] }) => {
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative', backgroundColor: '#000000' }}>
       <div ref={mountRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+      {activeRegion && activeRegion.topMarkers?.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '16px',
+            left: '16px',
+            background: 'rgba(0, 0, 0, 0.65)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
+            borderRadius: '8px',
+            padding: '12px 14px',
+            color: '#FFFFFF',
+            pointerEvents: 'none',
+            backdropFilter: 'blur(6px)',
+            maxWidth: '240px'
+          }}
+        >
+          <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
+            {activeRegion.title}
+          </div>
+          {activeRegion.topMarkers.map((marker) => (
+            <div
+              key={`${activeRegion.id}-${marker.name}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '12px',
+                lineHeight: 1.4,
+                marginBottom: '4px'
+              }}
+            >
+              <span
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '3px',
+                  backgroundColor: marker.color,
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  flexShrink: 0
+                }}
+              />
+              <span>{marker.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
