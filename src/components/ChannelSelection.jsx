@@ -16,6 +16,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
   const [channels, setChannels] = useState([]);
   const presetVersionRef = useRef(null);
   const presetChannelsRef = useRef(presetChannels);
+  const applyingPresetRef = useRef(false);
 
   useEffect(() => {
     presetChannelsRef.current = presetChannels;
@@ -113,6 +114,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
 
     setChannelRanges({});
     setPendingThresholds(initialPending);
+    applyingPresetRef.current = true;
     setChannels(normalizedChannels);
   }, [presetVersion, onChannelsChange]);
 
@@ -235,6 +237,10 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
   
   // Notify parent on mount and whenever channels change
   useEffect(() => {
+    if (applyingPresetRef.current) {
+      applyingPresetRef.current = false;
+      return;
+    }
     if (onChannelsChange) {
       onChannelsChange(channels);
     }
@@ -459,10 +465,11 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
       backgroundColor: '#000000',
       border: '1px solid #444',
       padding: '10px',
-      overflow: 'auto',
       display: 'flex',
       flexDirection: 'column',
-      fontSize: '12px'
+      fontSize: '12px',
+      boxSizing: 'border-box',
+      overflow: 'hidden'
     }}>
       {/* Header */}
       <div style={{ 

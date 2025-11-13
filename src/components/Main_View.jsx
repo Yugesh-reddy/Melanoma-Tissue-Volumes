@@ -15,7 +15,7 @@ const CAMERA_INITIAL_STATE = {
 const MOVE_SPEED = 0.05;
 const FAST_MOVE_SPEED = 0.15;
 const LOD_COOLDOWN_MS = 200;
-const MAX_POINTS_PER_CHANNEL = 1_000_000;
+const MAX_POINTS_PER_CHANNEL = 5_000_000;
 const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
 const EDGE_FEATHER = 0.99;
@@ -66,7 +66,7 @@ const getConfigSignature = (config) =>
     config.opacity ?? ''
   ].join('|');
 
-const Main_View = ({ channels = [], activeRegion }) => {
+const Main_View = ({ channels = [], activeRegions = [] }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -171,7 +171,7 @@ const Main_View = ({ channels = [], activeRegion }) => {
     if (estimatedPassing > MAX_POINTS_PER_CHANNEL) {
       const ratio = estimatedPassing / MAX_POINTS_PER_CHANNEL;
       sampling = Math.max(2, Math.ceil(Math.cbrt(Math.max(ratio, 1) * 2)));
-      if (totalVoxels > 400_000) {
+      if (totalVoxels > 1_000_000) {
         sampling = Math.max(sampling, 4);
       }
     }
@@ -792,7 +792,7 @@ const Main_View = ({ channels = [], activeRegion }) => {
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative', backgroundColor: '#000000' }}>
       <div ref={mountRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
-      {activeRegion && activeRegion.topMarkers?.length > 0 && (
+      {activeRegions.length > 0 && (
         <div
           style={{
             position: 'absolute',
@@ -805,35 +805,41 @@ const Main_View = ({ channels = [], activeRegion }) => {
             color: '#FFFFFF',
             pointerEvents: 'none',
             backdropFilter: 'blur(6px)',
-            maxWidth: '240px'
+            maxWidth: '260px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
           }}
         >
-          <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
-            {activeRegion.title}
-          </div>
-          {activeRegion.topMarkers.map((marker) => (
-            <div
-              key={`${activeRegion.id}-${marker.name}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '12px',
-                lineHeight: 1.4,
-                marginBottom: '4px'
-              }}
-            >
-              <span
-                style={{
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '3px',
-                  backgroundColor: marker.color,
-                  border: '1px solid rgba(255,255,255,0.25)',
-                  flexShrink: 0
-                }}
-              />
-              <span>{marker.name}</span>
+          {activeRegions.map((region) => (
+            <div key={`hud-${region.id}`} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                {region.title}
+              </div>
+              {region.topMarkers.map((marker) => (
+                <div
+                  key={`${region.id}-${marker.name}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '12px',
+                    lineHeight: 1.4
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '12px',
+                      height: '12px',
+                      borderRadius: '3px',
+                      backgroundColor: marker.color,
+                      border: '1px solid rgba(255,255,255,0.25)',
+                      flexShrink: 0
+                    }}
+                  />
+                  <span>{marker.name}</span>
+                </div>
+              ))}
             </div>
           ))}
         </div>

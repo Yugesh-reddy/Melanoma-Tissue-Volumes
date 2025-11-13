@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import channelNamesData from '../channel_names.json';
 
 const REGION_DEFINITIONS = [
@@ -155,16 +155,15 @@ const buildLookupTables = (names) => {
   return { exact, withoutParens };
 };
 
-const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
-
+const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
   const lookupTables = useMemo(
     () => buildLookupTables(channelNamesData || []),
     []
   );
 
-  const selectedRegion = useMemo(
-    () => REGION_DEFINITIONS.find((region) => region.id === selectedRegionId) || null,
-    [selectedRegionId]
+  const selectedRegionIds = useMemo(
+    () => new Set(selectedRegions.map((region) => region.id)),
+    [selectedRegions]
   );
 
   const resolveChannelIndex = (markerName) => {
@@ -228,17 +227,18 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
         name: markerName,
         color
       })),
-      channels: channelConfigs
+      channels: channelConfigs,
+      markers: region.markers,
+      palette: region.palette
     };
   };
 
-  const handleRegionToggle = (region, isChecked) => {
-    if (!onRegionSelect) return;
-    if (isChecked) {
-      onRegionSelect(buildRegionPayload(region));
-    } else {
-      onRegionSelect(null);
-    }
+  const handleRegionToggle = (region, shouldSelect) => {
+    if (!onToggleRegion) return;
+    onToggleRegion({
+      regionPayload: buildRegionPayload(region),
+      shouldSelect
+    });
   };
 
   return (
@@ -249,10 +249,11 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
         backgroundColor: '#000000',
         border: '1px solid #444',
         padding: '12px',
-        overflowY: 'auto',
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px'
+        gap: '12px',
+        boxSizing: 'border-box'
       }}
     >
       <h3
@@ -266,13 +267,15 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
         Region Selection
       </h3>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', flex: 1 }}>
         {REGION_DEFINITIONS.map((region) => {
-          const isSelected = selectedRegionId === region.id;
+          const isSelected = selectedRegionIds.has(region.id);
 
           return (
-            <label
+            <button
               key={region.id}
+              type="button"
+              onClick={() => handleRegionToggle(region, !isSelected)}
               style={{
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -281,19 +284,12 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
                 background: isSelected ? '#1a1d29' : '#0f1016',
                 borderRadius: '6px',
                 padding: '10px 12px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                border: 'none',
+                outline: 'none'
               }}
+              aria-pressed={isSelected}
             >
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={(event) => handleRegionToggle(region, event.target.checked)}
-                style={{
-                  position: 'absolute',
-                  opacity: 0,
-                  pointerEvents: 'none'
-                }}
-              />
               <div
                 style={{
                   width: '18px',
@@ -352,62 +348,11 @@ const Region_Selection = ({ onRegionSelect, selectedRegionId }) => {
                   ({region.markers.join(', ')})
                 </div>
               </div>
-            </label>
+            </button>
           );
         })}
       </div>
 
-      {selectedRegion && (
-        <div
-          style={{
-            marginTop: '6px',
-            padding: '12px',
-            borderRadius: '8px',
-            background: '#10121c',
-            color: '#f4f6ff',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px'
-          }}
-        >
-          <div style={{ fontSize: '14px', fontWeight: 600 }}>
-            {selectedRegion.title}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ fontSize: '12px', color: '#c3c8db' }}>Top 4 markers:</div>
-            {selectedRegion.markers.slice(0, 4).map((marker) => (
-              <div key={`${selectedRegion.id}-selected-${marker}`} style={{ fontSize: '12px' }}>
-                {marker}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ fontSize: '12px', color: '#c3c8db', marginTop: '2px' }}>All markers:</div>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '6px',
-              fontSize: '11px'
-            }}
-          >
-            {selectedRegion.markers.map((marker) => (
-              <span
-                key={`${selectedRegion.id}-marker-${marker}`}
-                style={{
-                  padding: '4px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: '#1b1f2d',
-                  border: '1px solid #2a3045'
-                }}
-              >
-                {marker}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
