@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import Title from './components/Title';
 import ChannelSelection from './components/ChannelSelection';
 import Region_Selection from './components/Region_Selection';
@@ -17,9 +17,26 @@ const rgbToHex = (r, g, b) => {
 
 function App() {
   const [channels, setChannels] = useState([]);
+  const [activeRegion, setActiveRegion] = useState(null);
 
-  const handleChannelsChange = (updatedChannels) => {
+  const handleChannelsChange = useCallback((updatedChannels) => {
     setChannels(updatedChannels);
+    setActiveRegion((prev) => (prev ? null : prev));
+  }, []);
+
+  const handleRegionSelect = (regionPayload) => {
+    if (!regionPayload) {
+      setChannels([]);
+      setActiveRegion(null);
+      return;
+    }
+
+    setChannels(regionPayload.channels);
+    setActiveRegion({
+      id: regionPayload.id,
+      title: regionPayload.title,
+      topMarkers: regionPayload.topMarkers
+    });
   };
 
   return (
@@ -41,7 +58,7 @@ function App() {
           </div>
           {/* Region Selection - 55% of sidebar height */}
           <div style={{ height: '55%' }}>
-            <Region_Selection />
+            <Region_Selection onRegionSelect={handleRegionSelect} selectedRegionId={activeRegion?.id} />
           </div>
         </div>
 
@@ -49,7 +66,7 @@ function App() {
         <div style={{ width: '75%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Main View - 75% height */}
           <div style={{ height: '75%' }}>
-            <Main_View channels={channels} />
+            <Main_View channels={channels} activeRegion={activeRegion} />
           </div>
 
           {/* Bottom panels - 25% height */}
