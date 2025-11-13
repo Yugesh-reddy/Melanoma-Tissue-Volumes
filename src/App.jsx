@@ -81,7 +81,7 @@ function App() {
           <div style={{ height: '25%', display: 'flex' }}>
             {/* Local View - 25% width */}
             <div style={{ width: '33.3%', height: '100%' }}>
-              <Local_View selectedRegionData={selectedRegionData} />
+              <Local_View selectedRegionData={selectedRegionData} channels={channels} />
             </div>
             {/* Graph Panel - 25% width */}
             <div style={{ width: '33.3%', height: '100%' }}>

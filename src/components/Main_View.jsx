@@ -865,10 +865,10 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
           cuboidWireframeRef.current = null;
         }
       } else {
-        if (e.button === 0) isRotating = true;
-        if (e.button === 2) isPanning = true;
-        mouseX = e.clientX;
-        mouseY = e.clientY;
+      if (e.button === 0) isRotating = true;
+      if (e.button === 2) isPanning = true;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
       }
     };
 
@@ -900,8 +900,8 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
         setSelectionEnd(null);
         selectionStartPos = null;
       } else {
-        isRotating = false;
-        isPanning = false;
+      isRotating = false;
+      isPanning = false;
       }
     };
 
@@ -925,19 +925,19 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
           setCuboidSize(worldBounds.size);
         }
       } else {
-        const state = cameraStateRef.current;
-        if (isRotating) {
-          state.rotation.y += (e.clientX - mouseX) * 0.01;
-          state.rotation.x += (e.clientY - mouseY) * 0.01;
-          updateCameraPosition();
-        }
-        if (isPanning) {
-          state.panOffset.x += (e.clientX - mouseX) * 0.001;
-          state.panOffset.y -= (e.clientY - mouseY) * 0.001;
-          updateCameraPosition();
-        }
-        mouseX = e.clientX;
-        mouseY = e.clientY;
+      const state = cameraStateRef.current;
+      if (isRotating) {
+        state.rotation.y += (e.clientX - mouseX) * 0.01;
+        state.rotation.x += (e.clientY - mouseY) * 0.01;
+        updateCameraPosition();
+      }
+      if (isPanning) {
+        state.panOffset.x += (e.clientX - mouseX) * 0.001;
+        state.panOffset.y -= (e.clientY - mouseY) * 0.001;
+        updateCameraPosition();
+      }
+      mouseX = e.clientX;
+      mouseY = e.clientY;
       }
     };
 
@@ -964,10 +964,10 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
           setCuboidSize(worldBounds.size);
         }
       } else {
-        const state = cameraStateRef.current;
-        state.distance *= (1 + e.deltaY * 0.001);
-        state.distance = Math.max(0.1, Math.min(20, state.distance));
-        updateCameraPosition();
+      const state = cameraStateRef.current;
+      state.distance *= (1 + e.deltaY * 0.001);
+      state.distance = Math.max(0.1, Math.min(20, state.distance));
+      updateCameraPosition();
         updateChannelLOD();
       }
     };
