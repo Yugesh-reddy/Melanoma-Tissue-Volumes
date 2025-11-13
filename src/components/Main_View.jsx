@@ -735,12 +735,24 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
         if (channelConfig.visible === false) continue;
 
         try {
+          const currentConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
+          if (!currentConfig || getConfigSignature(currentConfig) !== getConfigSignature(channelConfig)) {
+            console.log(`Main_View: ⏭️ Skipping stale load for channel ${channelConfig.channelIndex}`);
+            continue;
+          }
+
           let channelData = channelDataCache.get(channelConfig.channelIndex);
           if (!channelData) {
             channelData = await loadChannelData(channelConfig.channelIndex);
             if (channelData) {
               channelDataCache.set(channelConfig.channelIndex, channelData);
             }
+          }
+
+          const latestConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
+          if (!latestConfig || getConfigSignature(latestConfig) !== getConfigSignature(channelConfig)) {
+            console.log(`Main_View: ⏹️ Loaded data discarded for channel ${channelConfig.channelIndex} (stale)`);
+            continue;
           }
 
           if (!channelData) continue;

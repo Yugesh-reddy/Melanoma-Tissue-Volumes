@@ -86,12 +86,11 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
 
     const usedIds = new Set();
     const normalizedChannels = externalChannels.map((channel, idx) => {
-      let candidateId =
-        typeof channel.id === 'number' && Number.isFinite(channel.id)
-          ? channel.id
-          : channel.channelIndex ?? idx;
+      const baseId = channel.id ?? channel.channelIndex ?? idx;
+      let candidateId = String(baseId);
+      let duplicateCounter = 1;
       while (usedIds.has(candidateId)) {
-        candidateId += 1;
+        candidateId = `${baseId}_${duplicateCounter++}`;
       }
       usedIds.add(candidateId);
 
