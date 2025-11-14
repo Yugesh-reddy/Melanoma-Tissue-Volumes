@@ -15,7 +15,7 @@ const CAMERA_INITIAL_STATE = {
 const MOVE_SPEED = 0.05;
 const FAST_MOVE_SPEED = 0.15;
 const LOD_COOLDOWN_MS = 200;
-const MAX_POINTS_PER_CHANNEL = 5_000_000;
+const MAX_POINTS_PER_CHANNEL = 50000000;
 const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
 const EDGE_FEATHER = 0.99;
@@ -171,7 +171,7 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
     if (estimatedPassing > MAX_POINTS_PER_CHANNEL) {
       const ratio = estimatedPassing / MAX_POINTS_PER_CHANNEL;
       sampling = Math.max(2, Math.ceil(Math.cbrt(Math.max(ratio, 1) * 2)));
-      if (totalVoxels > 1_000_000) {
+      if (totalVoxels > 20_000_000) {
         sampling = Math.max(sampling, 4);
       }
     }
@@ -802,8 +802,22 @@ const Main_View = ({ channels = [], activeRegions = [] }) => {
   }, [channels, createChannelVisualization, getDesiredSampling, loadChannelData, renderScene]);
 
   return (
-    <div style={{ height: '100%', width: '100%', position: 'relative', backgroundColor: '#000000' }}>
-      <div ref={mountRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+    <div style={{ 
+      height: '100%', 
+      width: '100%', 
+      position: 'relative', 
+      backgroundColor: '#000000',
+      overflow: 'hidden',
+      boxSizing: 'border-box'
+    }}>
+      <div ref={mountRef} style={{ 
+        width: '100%', 
+        height: '100%', 
+        position: 'absolute', 
+        top: 0, 
+        left: 0,
+        overflow: 'hidden'
+      }} />
       {activeRegions.length > 0 && (
         <div
           style={{

@@ -74,20 +74,50 @@ function App() {
   }, [aggregatedSignature, aggregatedRegionChannels]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#000000', position: 'fixed', top: 0, left: 0 }}>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      width: '100vw', 
+      height: '100vh', 
+      overflow: 'hidden', 
+      backgroundColor: '#000000', 
+      position: 'fixed', 
+      top: 0, 
+      left: 0,
+      boxSizing: 'border-box'
+    }}>
       {/* Title - 9.5% height, 100% width */}
-      <Title softwareName="Melanoma Tissue Volumes" />
+      <div style={{ height: '9.5%', width: '100%', flexShrink: 0, overflow: 'hidden' }}>
+        <Title softwareName="Melanoma Tissue Volumes" />
+      </div>
 
       {/* Main Content Area - 90.5% height, 100% width */}
       <div style={{
-        flex: '100%',
+        height: '90.5%',
         width: '100%',
-        display: 'flex'
+        display: 'flex',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+        flexShrink: 0
       }}>
         {/* Left Sidebar - 100% of main content height, 25% width */}
-        <div style={{ width: '25%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-          {/* Channel Selection - 40% of sidebar height */}
-          <div style={{ height: '45%' }}>
+        <div style={{ 
+          width: '25%', 
+          height: '100%', 
+          display: 'flex', 
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+          flexShrink: 0
+        }}>
+          {/* Channel Selection - 45% of sidebar height */}
+          <div style={{ 
+            height: '45%', 
+            width: '100%',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            flexShrink: 0
+          }}>
             <ChannelSelection
               onChannelsChange={handleChannelsChange}
               presetChannels={channels}
@@ -95,7 +125,13 @@ function App() {
             />
           </div>
           {/* Region Selection - 55% of sidebar height */}
-          <div style={{ height: '55%' }}>
+          <div style={{ 
+            height: '55%', 
+            width: '100%',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            flexShrink: 0
+          }}>
             <Region_Selection
               onToggleRegion={handleRegionToggle}
               selectedRegions={selectedRegions}
@@ -104,24 +140,63 @@ function App() {
         </div>
 
         {/* Right Section - 100% of main content height, 75% width */}
-        <div style={{ width: '75%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ 
+          width: '75%', 
+          height: '100%', 
+          display: 'flex', 
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+          flexShrink: 0
+        }}>
           {/* Main View - 75% height */}
-          <div style={{ height: '75%' }}>
+          <div style={{ 
+            height: '75%', 
+            width: '100%',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            flexShrink: 0
+          }}>
             <Main_View channels={channels} activeRegions={selectedRegions} />
           </div>
 
           {/* Bottom panels - 25% height */}
-          <div style={{ height: '25%', display: 'flex' }}>
-            {/* Local View - 25% width */}
-            <div style={{ width: '33.3%', height: '100%' }}>
+          <div style={{ 
+            height: '25%', 
+            width: '100%',
+            display: 'flex',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            flexShrink: 0
+          }}>
+            {/* Local View - 33.3% width */}
+            <div style={{ 
+              width: '33.3%', 
+              height: '100%',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+              flexShrink: 0
+            }}>
               <Local_View />
             </div>
-            {/* Graph Panel - 25% width */}
-            <div style={{ width: '33.3%', height: '100%' }}>
+            {/* Graph Panel - 33.3% width */}
+            <div style={{ 
+              width: '33.3%', 
+              height: '100%',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+              flexShrink: 0
+            }}>
               <Graph_Pannel />
             </div>
-            {/* Direction View - 25% width */}
-            <div style={{ width: '33.3%', height: '100%' }}>
+            {/* Direction View - 33.3% width */}
+            <div style={{ 
+              width: '33.3%', 
+              height: '100%',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+              flexShrink: 0
+            }}>
               <Direction_view />
             </div>
           </div>
