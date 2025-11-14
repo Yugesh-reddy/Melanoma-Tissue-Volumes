@@ -75,41 +75,19 @@ function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#000000', position: 'fixed', top: 0, left: 0 }}>
-      {/* Title - 5% height, 100% width */}
-      <div style={{ flex: '0 0 5%', minHeight: 0 }}>
-        <Title softwareName="Melanoma Tissue Volumes" />
-      </div>
+      {/* Title - 9.5% height, 100% width */}
+      <Title softwareName="Melanoma Tissue Volumes" />
 
-      {/* Main Content Area - 95% height, 100% width */}
-      <div
-        style={{
-          flex: '1 1 95%',
-          width: '100%',
-          display: 'flex',
-          overflow: 'hidden'
-        }}
-      >
+      {/* Main Content Area - 90.5% height, 100% width */}
+      <div style={{
+        flex: '100%',
+        width: '100%',
+        display: 'flex'
+      }}>
         {/* Left Sidebar - 100% of main content height, 25% width */}
-        <div
-          style={{
-            width: '25%',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-            gap: '10px',
-            paddingRight: '6px'
-          }}
-        >
+        <div style={{ width: '25%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Channel Selection - 40% of sidebar height */}
-          <div
-            style={{
-              flex: '0 0 45%',
-              minHeight: 0,
-              overflow: 'hidden'
-            }}
-          >
+          <div style={{ height: '45%' }}>
             <ChannelSelection
               onChannelsChange={handleChannelsChange}
               presetChannels={channels}
@@ -117,13 +95,7 @@ function App() {
             />
           </div>
           {/* Region Selection - 55% of sidebar height */}
-          <div
-            style={{
-              flex: '1 1 55%',
-              minHeight: 0,
-              overflow: 'hidden'
-            }}
-          >
+          <div style={{ height: '55%' }}>
             <Region_Selection
               onToggleRegion={handleRegionToggle}
               selectedRegions={selectedRegions}
@@ -132,70 +104,24 @@ function App() {
         </div>
 
         {/* Right Section - 100% of main content height, 75% width */}
-        <div
-          style={{
-            width: '75%',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-            gap: '10px'
-          }}
-        >
+        <div style={{ width: '75%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Main View - 75% height */}
-          <div
-            style={{
-              flex: '3 1 0%',
-              minHeight: 0,
-              position: 'relative',
-              overflow: 'hidden'
-            }}
-          >
+          <div style={{ height: '75%' }}>
             <Main_View channels={channels} activeRegions={selectedRegions} />
           </div>
 
           {/* Bottom panels - 25% height */}
-          <div
-            style={{
-              flex: '1 1 0%',
-              minHeight: 0,
-              display: 'flex',
-              gap: '10px',
-              overflow: 'hidden'
-            }}
-          >
+          <div style={{ height: '25%', display: 'flex' }}>
             {/* Local View - 25% width */}
-            <div
-              style={{
-                width: '33.3%',
-                height: '100%',
-                overflow: 'auto',
-                boxSizing: 'border-box'
-              }}
-            >
+            <div style={{ width: '33.3%', height: '100%' }}>
               <Local_View />
             </div>
             {/* Graph Panel - 25% width */}
-            <div
-              style={{
-                width: '33.3%',
-                height: '100%',
-                overflow: 'auto',
-                boxSizing: 'border-box'
-              }}
-            >
+            <div style={{ width: '33.3%', height: '100%' }}>
               <Graph_Pannel />
             </div>
             {/* Direction View - 25% width */}
-            <div
-              style={{
-                width: '33.3%',
-                height: '100%',
-                overflow: 'auto',
-                boxSizing: 'border-box'
-              }}
-            >
+            <div style={{ width: '33.3%', height: '100%' }}>
               <Direction_view />
             </div>
           </div>
