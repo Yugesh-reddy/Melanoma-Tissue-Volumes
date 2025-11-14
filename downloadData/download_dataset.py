@@ -12,7 +12,7 @@ def download_biomedvis_dataset():
     print(" BiomedVis Challenge 2025 - Dataset Downloader")
     print("=" * 50)
     print(" Dataset: Quality 3 (6GB)")
-    print(" Output: ./biomedvis-24gb/")
+    print(" Output: ./biomedvis-6gb/")
     print("  Time: 2-10 minutes")
     print("-" * 50)
     
@@ -28,9 +28,13 @@ def download_biomedvis_dataset():
     print("\n Starting download...")
     
     try:
-        # Use AWS CLI to sync the data
+        # Use AWS CLI to sync the data - find aws in virtual environment or system
+        import sys
+        venv_aws = os.path.join(os.path.dirname(sys.executable), "aws")
+        aws_cmd = venv_aws if os.path.exists(venv_aws) else "aws"
+        
         cmd = [
-            "python", "-m", "awscli", "s3", "sync", 
+            aws_cmd, "s3", "sync", 
             bucket_path, local_path, "--no-sign-request"
         ]
         
