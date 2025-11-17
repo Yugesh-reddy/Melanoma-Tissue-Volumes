@@ -87,13 +87,13 @@ function App() {
       boxSizing: 'border-box'
     }}>
       {/* Title - 9.5% height, 100% width */}
-      <div style={{ height: '9.5%', width: '100%', flexShrink: 0, overflow: 'hidden' }}>
+      <div style={{ height: '4%', width: '100%', flexShrink: 0, overflow: 'hidden' }}>
         <Title softwareName="Melanoma Tissue Volumes" />
       </div>
 
       {/* Main Content Area - 90.5% height, 100% width */}
       <div style={{
-        height: '90.5%',
+        height: '100%',
         width: '100%',
         display: 'flex',
         overflow: 'hidden',
@@ -151,7 +151,7 @@ function App() {
         }}>
           {/* Main View - 75% height */}
           <div style={{ 
-            height: '75%', 
+            height: '70%', 
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
@@ -162,7 +162,7 @@ function App() {
 
           {/* Bottom panels - 25% height */}
           <div style={{ 
-            height: '25%', 
+            height: '30%', 
             width: '100%',
             display: 'flex',
             overflow: 'hidden',
@@ -197,7 +197,7 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Direction_view />
+              <Direction_view channels={channels} />
             </div>
           </div>
         </div>
