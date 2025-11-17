@@ -638,21 +638,33 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
       return;
     }
     
+    console.log('Main_View: ===== SELECTION COMPLETED =====');
     console.log('Main_View: 3D Cuboid selection completed');
     console.log('Main_View: World bounds:', worldBounds);
     console.log('Main_View: Cuboid center:', worldBounds.center);
     console.log('Main_View: Cuboid size:', worldBounds.size);
+    console.log('Main_View: Current channels:', channels);
+    console.log('Main_View: onSelectionChange callback exists:', !!onSelectionChange);
     
     const selectedData = await extractSelectedRegion(worldBounds);
     if (selectedData) {
-      console.log('Main_View: Extracted selected region data:', selectedData);
+      console.log('Main_View: ✓ Extracted selected region data:', selectedData);
       console.log('Main_View: Voxel bounds:', selectedData.bounds);
-      console.log('Main_View: Channels:', selectedData.channels.length);
+      console.log('Main_View: Channels count:', selectedData.channels.length);
+      console.log('Main_View: Channels:', selectedData.channels);
+      console.log('Main_View: Scaling factors:', selectedData.scaling);
+      
       if (onSelectionChange) {
+        console.log('Main_View: Calling onSelectionChange callback...');
         onSelectionChange(selectedData);
+        console.log('Main_View: ✓ onSelectionChange called successfully');
+      } else {
+        console.error('Main_View: ✗ onSelectionChange callback is NULL!');
       }
     } else {
-      console.warn('Main_View: Failed to extract selected region data');
+      console.error('Main_View: ✗ Failed to extract selected region data');
+      console.error('Main_View: World bounds were:', worldBounds);
+      console.error('Main_View: Visible channels:', channels.filter(c => c.visible !== false));
     }
   };
 
@@ -734,14 +746,17 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
     let currentCuboidDepth = 0.1;
 
     const handleMouseDown = (e) => {
+      console.log('Main_View: Mouse down - selectionMode:', selectionModeRef.current, 'button:', e.button);
       if (selectionModeRef.current && e.button === 0) {
         // Start 3D cuboid selection
+        console.log('Main_View: Starting 3D cuboid selection...');
         const rect = renderer.domElement.getBoundingClientRect();
         selectionStartPos = { x: e.clientX, y: e.clientY };
         setIsSelecting(true);
         setSelectionStart(selectionStartPos);
         setSelectionEnd(selectionStartPos);
         currentCuboidDepth = cuboidDepth;
+        console.log('Main_View: Selection started at:', selectionStartPos, 'depth:', currentCuboidDepth);
         
         // Clear previous cuboid
         if (cuboidWireframeRef.current && sceneRef.current) {
@@ -757,10 +772,13 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
     };
 
     const handleMouseUp = (e) => {
+      console.log('Main_View: Mouse up - selectionMode:', selectionModeRef.current, 'selectionStartPos:', selectionStartPos);
       if (selectionModeRef.current && selectionStartPos) {
         // Complete 3D cuboid selection
         const endX = e.clientX;
         const endY = e.clientY;
+        
+        console.log('Main_View: Selection completed - start:', selectionStartPos, 'end:', { x: endX, y: endY }, 'depth:', currentCuboidDepth);
         
         // Get final world bounds with current depth
         const worldBounds = getWorldBoundsFromSelection(
@@ -771,12 +789,17 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
           currentCuboidDepth
         );
         
+        console.log('Main_View: World bounds from selection:', worldBounds);
+        
         if (worldBounds) {
           // Keep wireframe visible
           updateCuboidWireframe(worldBounds);
           
           // Extract and send selection data
+          console.log('Main_View: Calling handleSelectionComplete...');
           handleSelectionComplete(worldBounds);
+        } else {
+          console.warn('Main_View: No world bounds calculated from selection');
         }
         
         setIsSelecting(false);
@@ -1160,7 +1183,9 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
       {/* Selection Mode Toggle Button */}
       <button
         onClick={() => {
-          setSelectionMode(!selectionMode);
+          const newMode = !selectionMode;
+          console.log('Main_View: Selection mode toggled:', newMode);
+          setSelectionMode(newMode);
           // Clear cuboid when disabling selection
           if (selectionMode && cuboidWireframeRef.current && sceneRef.current) {
             sceneRef.current.remove(cuboidWireframeRef.current);

@@ -25,7 +25,13 @@ function App() {
   };
 
   const handleSelectionChange = (selectedData) => {
+    console.log('App: ===== RECEIVED SELECTION DATA =====');
+    console.log('App: Selected data received:', selectedData);
+    console.log('App: Bounds:', selectedData?.bounds);
+    console.log('App: Channels:', selectedData?.channels);
+    console.log('App: Setting selectedRegionData state...');
     setSelectedRegionData(selectedData);
+    console.log('App: ✓ selectedRegionData state updated');
   };
 
   return (

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 
 const Local_View = ({ selectedRegionData, channels = [] }) => {
@@ -14,6 +14,12 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
   // State for UI display
   const [cellCount, setCellCount] = useState(0);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  
+  // Debug: Log props changes
+  useEffect(() => {
+    console.log('Local_View: Props received - selectedRegionData:', selectedRegionData);
+    console.log('Local_View: Props received - channels:', channels);
+  }, [selectedRegionData, channels]);
   
   // Camera state for local view (super zoomed)
   const cameraStateRef = useRef({
@@ -291,8 +297,8 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     return mesh;
   };
 
-  // Update camera position
-  const updateCameraPosition = () => {
+  // Update camera position - use useCallback to ensure it's stable
+  const updateCameraPosition = useCallback(() => {
     if (!cameraRef.current) return;
 
     const state = cameraStateRef.current;
@@ -311,10 +317,10 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     cameraRef.current.position.z = lookAtPoint.z + radius * Math.cos(theta) * Math.cos(phi);
     cameraRef.current.up.set(0, -1, 0);
     cameraRef.current.lookAt(lookAtPoint);
-  };
+  }, []);
 
-  // Update lighting based on camera direction
-  const updateLighting = () => {
+  // Update lighting based on camera direction - use useCallback
+  const updateLighting = useCallback(() => {
     const camera = cameraRef.current;
     if (!camera) return;
     const direction = new THREE.Vector3();
@@ -325,7 +331,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
         material.uniforms.lightDirection.value.copy(direction);
       }
     });
-  };
+  }, []);
 
   // Create visualization from selected region data
   // channelsOverride: optional array of current channel configs to use instead of stored channels
@@ -545,8 +551,29 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     updateCameraPosition();
     updateLighting();
     
+    // Force multiple renders to ensure visualization is displayed immediately
+    if (rendererRef.current && cameraRef.current && sceneRef.current) {
+      // Render immediately
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      // Also render on next frame to ensure it's visible
+      requestAnimationFrame(() => {
+        if (rendererRef.current && cameraRef.current && sceneRef.current) {
+          updateCameraPosition();
+          updateLighting();
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        }
+      });
+    }
+    
     console.log('Local_View: Camera positioned at distance', cameraStateRef.current.distance, 'looking at', boxCenter);
-    console.log('Local_View: Visualization complete');
+    console.log(`Local_View: Visualization complete - ${meshCount} meshes added to scene, ${totalCellCount} total cells`);
+    console.log(`Local_View: Scene children count: ${sceneRef.current.children.length}`);
+    console.log(`Local_View: Voxel meshes count: ${voxelMeshesRef.current.length}`);
+    
+    // Log mesh details for debugging
+    voxelMeshesRef.current.forEach((mesh, idx) => {
+      console.log(`Local_View: Mesh ${idx}: visible=${mesh.visible}, position=`, mesh.position, `instances=${mesh.geometry.instanceCount}`);
+    });
   };
 
   // Setup Three.js scene
@@ -629,13 +656,21 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     renderer.domElement.addEventListener('wheel', handleWheel);
     renderer.domElement.addEventListener('contextmenu', handleContextMenu);
 
-    // Animation loop
+    // Animation loop - ensure it always renders
     const animate = () => {
-      updateLighting();
-      renderer.render(scene, camera);
+      if (cameraRef.current && sceneRef.current && rendererRef.current) {
+        updateLighting();
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
       animationRef.current = requestAnimationFrame(animate);
     };
     animate();
+    
+    // Initial render to ensure something is displayed
+    console.log('Local_View: Scene initialized, rendering initial frame');
+    if (cameraRef.current && sceneRef.current) {
+      renderer.render(scene, camera);
+    }
 
     // Resize handler
     const handleResize = () => {
@@ -674,65 +709,85 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       if (container && renderer.domElement) {
         container.removeChild(renderer.domElement);
       }
+      
+      // Clear refs
+      sceneRef.current = null;
+      cameraRef.current = null;
+      rendererRef.current = null;
     };
-  }, []);
+  }, [updateCameraPosition, updateLighting]);
 
-  // Update visualization when selected region data changes
-  // Always use current channels when available, fallback to stored channels
+  // Combined effect to handle both selectedRegionData and channels changes
+  // This ensures Local_View always shows the exact same thing as Main_View
   useEffect(() => {
-    if (!selectedRegionData || !selectedRegionData.bounds) {
-      return;
-    }
-
-    // Clear any pending channel updates
+    // Clear any pending updates
     if (updateTimeoutRef.current) {
       clearTimeout(updateTimeoutRef.current);
       updateTimeoutRef.current = null;
     }
 
-    // Use current channels if available, otherwise use stored channels
-    const channelsToUse = (channels && channels.length > 0) ? channels : selectedRegionData.channels;
-    console.log('Local_View: Selected region changed, creating visualization');
-    createLocalVisualization(selectedRegionData, channelsToUse);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRegionData]); // Only trigger on selectedRegionData change to avoid double renders
-
-  // Update visualization when channels change (using current channel settings)
-  // Debounce slider updates to avoid excessive re-renders
-  useEffect(() => {
-    // Skip if no selection exists
+    // If no selection, clear visualization
     if (!selectedRegionData || !selectedRegionData.bounds) {
+      console.log('Local_View: No selected region data, clearing visualization');
+      if (sceneRef.current) {
+        voxelMeshesRef.current.forEach(mesh => {
+          sceneRef.current.remove(mesh);
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) mesh.material.dispose();
+        });
+        voxelMeshesRef.current = [];
+        setCellCount(0);
+      }
       return;
     }
 
-    // Skip if channels array is empty (initial state)
-    if (!channels || channels.length === 0) {
+    // Determine which channels to use - ALWAYS prefer current channels if available
+    // Current channels have the latest filter settings that match Main_View
+    const channelsToUse = (channels && channels.length > 0) ? channels : selectedRegionData.channels;
+    
+    if (!channelsToUse || channelsToUse.length === 0) {
+      console.log('Local_View: No channels available, waiting...');
       return;
     }
 
-    // Skip if this is the initial render (selectedRegionData useEffect will handle it)
-    // We detect this by checking if selectedRegionData just changed
-    // This prevents double rendering when a new selection is made
-
-    // Clear existing timeout
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
-    }
-
-    // Debounce updates (150ms delay for slider changes)
+    console.log('Local_View: Updating visualization');
+    console.log(`Local_View: Using ${channelsToUse.length} channel(s) - ${(channels && channels.length > 0) ? 'current' : 'stored'}`);
+    console.log('Local_View: SelectedRegionData:', selectedRegionData);
+    console.log('Local_View: Channels:', channelsToUse);
+    
+    // Retry mechanism if scene isn't ready yet
+    const tryCreateVisualization = (retries = 10) => {
+      if (!sceneRef.current || !rendererRef.current || !cameraRef.current) {
+        if (retries > 0) {
+          console.warn(`Local_View: Scene/renderer not initialized yet, retrying... (${retries} retries left)`);
+          setTimeout(() => tryCreateVisualization(retries - 1), 200);
+          return;
+        } else {
+          console.error('Local_View: Scene/renderer not initialized after retries');
+          return;
+        }
+      }
+      
+      console.log('Local_View: Creating visualization now...');
+      createLocalVisualization(selectedRegionData, channelsToUse).catch(error => {
+        console.error('Local_View: Error creating visualization:', error);
+        console.error('Local_View: Error stack:', error.stack);
+      });
+    };
+    
+    // Small delay to ensure state is settled, then try to create visualization
     updateTimeoutRef.current = setTimeout(() => {
-      console.log('Local_View: Channels changed, updating visualization with current channel settings');
-      // Use current channels instead of stored channels
-      createLocalVisualization(selectedRegionData, channels);
-    }, 150);
-
+      tryCreateVisualization();
+    }, 100);
+    
     // Cleanup timeout on unmount or when dependencies change
     return () => {
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = null;
       }
     };
-  }, [channels]); // Only watch channels, not selectedRegionData
+  }, [selectedRegionData, channels]); // Watch both - this ensures updates when either changes
 
   // Close info modal when clicking outside
   useEffect(() => {
