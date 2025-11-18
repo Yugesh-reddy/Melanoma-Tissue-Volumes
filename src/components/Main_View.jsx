@@ -85,6 +85,9 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   const selectionModeRef = useRef(false);
   const cuboidRef = useRef(null);
   const cuboidWireframeRef = useRef(null);
+  const isSelectingRef = useRef(false);
+  const selectionEndRef = useRef(null);
+  const isTogglingRef = useRef(false);
   
   // 3D Cuboid selection state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -95,10 +98,18 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   const [cuboidCenter, setCuboidCenter] = useState(null);
   const [cuboidSize, setCuboidSize] = useState(null);
   
-  // Sync ref with state
+  // Sync refs with state
   useEffect(() => {
     selectionModeRef.current = selectionMode;
   }, [selectionMode]);
+  
+  useEffect(() => {
+    isSelectingRef.current = isSelecting;
+  }, [isSelecting]);
+  
+  useEffect(() => {
+    selectionEndRef.current = selectionEnd;
+  }, [selectionEnd]);
 
   const cameraStateRef = useRef({ ...CAMERA_INITIAL_STATE });
 
@@ -520,42 +531,87 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
 
   // Create or update 3D cuboid wireframe in scene
   const updateCuboidWireframe = (worldBounds) => {
-    if (!sceneRef.current || !worldBounds) return;
-    
-    // Remove existing wireframe
-    if (cuboidWireframeRef.current) {
-      sceneRef.current.remove(cuboidWireframeRef.current);
-      if (cuboidWireframeRef.current.geometry) cuboidWireframeRef.current.geometry.dispose();
-      if (cuboidWireframeRef.current.material) cuboidWireframeRef.current.material.dispose();
-      cuboidWireframeRef.current = null;
+    try {
+      if (!sceneRef.current || !worldBounds) {
+        console.warn('Main_View: Cannot update wireframe - scene or bounds missing');
+        return;
+      }
+      
+      if (!worldBounds.size || !worldBounds.center) {
+        console.warn('Main_View: Invalid worldBounds structure:', worldBounds);
+        return;
+      }
+      
+      // Remove existing wireframe
+      if (cuboidWireframeRef.current) {
+        try {
+          if (sceneRef.current.children.includes(cuboidWireframeRef.current)) {
+            sceneRef.current.remove(cuboidWireframeRef.current);
+          }
+          if (cuboidWireframeRef.current.geometry) {
+            cuboidWireframeRef.current.geometry.dispose();
+          }
+          if (cuboidWireframeRef.current.material) {
+            cuboidWireframeRef.current.material.dispose();
+          }
+        } catch (err) {
+          console.error('Main_View: Error removing existing wireframe:', err);
+        }
+        cuboidWireframeRef.current = null;
+      }
+      
+      // Create new wireframe cuboid
+      const size = worldBounds.size;
+      const center = worldBounds.center;
+      
+      // Validate size values
+      if (!size.x || !size.y || !size.z || 
+          isNaN(size.x) || isNaN(size.y) || isNaN(size.z) ||
+          !isFinite(size.x) || !isFinite(size.y) || !isFinite(size.z) ||
+          size.x <= 0 || size.y <= 0 || size.z <= 0) {
+        console.warn('Main_View: Invalid size values:', size);
+        return;
+      }
+      
+      // Ensure minimum size
+      const minSize = 0.001;
+      const safeSizeX = Math.max(minSize, Math.abs(size.x));
+      const safeSizeY = Math.max(minSize, Math.abs(size.y));
+      const safeSizeZ = Math.max(minSize, Math.abs(size.z));
+      
+      const boxGeometry = new THREE.BoxGeometry(safeSizeX, safeSizeY, safeSizeZ);
+      const boxEdges = new THREE.EdgesGeometry(boxGeometry);
+      const boxMaterial = new THREE.LineBasicMaterial({ 
+        color: 0x00ff00, 
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.8
+      });
+      const wireframe = new THREE.LineSegments(boxEdges, boxMaterial);
+      
+      // Validate center values
+      if (center && !isNaN(center.x) && !isNaN(center.y) && !isNaN(center.z)) {
+        wireframe.position.copy(center);
+      } else {
+        wireframe.position.set(0, 0, 0);
+      }
+      
+      sceneRef.current.add(wireframe);
+      cuboidWireframeRef.current = wireframe;
+      
+      // Store cuboid info
+      cuboidRef.current = {
+        center: center ? center.clone() : new THREE.Vector3(0, 0, 0),
+        size: size.clone(),
+        min: worldBounds.min ? worldBounds.min.clone() : new THREE.Vector3(-safeSizeX/2, -safeSizeY/2, -safeSizeZ/2),
+        max: worldBounds.max ? worldBounds.max.clone() : new THREE.Vector3(safeSizeX/2, safeSizeY/2, safeSizeZ/2)
+      };
+      
+      boxGeometry.dispose();
+    } catch (err) {
+      console.error('Main_View: Error in updateCuboidWireframe:', err);
+      console.error('Main_View: worldBounds:', worldBounds);
     }
-    
-    // Create new wireframe cuboid
-    const size = worldBounds.size;
-    const center = worldBounds.center;
-    
-    const boxGeometry = new THREE.BoxGeometry(size.x, size.y, size.z);
-    const boxEdges = new THREE.EdgesGeometry(boxGeometry);
-    const boxMaterial = new THREE.LineBasicMaterial({ 
-      color: 0x00ff00, 
-      linewidth: 2,
-      transparent: true,
-      opacity: 0.8
-    });
-    const wireframe = new THREE.LineSegments(boxEdges, boxMaterial);
-    wireframe.position.copy(center);
-    sceneRef.current.add(wireframe);
-    cuboidWireframeRef.current = wireframe;
-    
-    // Store cuboid info
-    cuboidRef.current = {
-      center: center.clone(),
-      size: size.clone(),
-      min: worldBounds.min.clone(),
-      max: worldBounds.max.clone()
-    };
-    
-    boxGeometry.dispose();
   };
 
   // Extract selected region data from all visible channels using 3D cuboid bounds
@@ -752,137 +808,181 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     let currentCuboidDepth = 0.1;
 
     const handleMouseDown = (e) => {
-      console.log('Main_View: Mouse down - selectionMode:', selectionModeRef.current, 'button:', e.button);
-      if (selectionModeRef.current && e.button === 0) {
-        // Start 3D cuboid selection
-        console.log('Main_View: Starting 3D cuboid selection...');
-        const rect = renderer.domElement.getBoundingClientRect();
-        selectionStartPos = { x: e.clientX, y: e.clientY };
-        setIsSelecting(true);
-        setSelectionStart(selectionStartPos);
-        setSelectionEnd(selectionStartPos);
-        currentCuboidDepth = cuboidDepth;
-        console.log('Main_View: Selection started at:', selectionStartPos, 'depth:', currentCuboidDepth);
-        
-        // Clear previous cuboid
-        if (cuboidWireframeRef.current && sceneRef.current) {
-          sceneRef.current.remove(cuboidWireframeRef.current);
-          cuboidWireframeRef.current = null;
+      try {
+        console.log('Main_View: Mouse down - selectionMode:', selectionModeRef.current, 'button:', e.button);
+        if (selectionModeRef.current && e.button === 0) {
+          // Start 3D cuboid selection
+          console.log('Main_View: Starting 3D cuboid selection...');
+          if (!rendererRef.current || !rendererRef.current.domElement) {
+            console.error('Main_View: Renderer not initialized');
+            return;
+          }
+          const rect = rendererRef.current.domElement.getBoundingClientRect();
+          selectionStartPos = { x: e.clientX, y: e.clientY };
+          setIsSelecting(true);
+          setSelectionStart(selectionStartPos);
+          setSelectionEnd(selectionStartPos);
+          currentCuboidDepth = cuboidDepth;
+          console.log('Main_View: Selection started at:', selectionStartPos, 'depth:', currentCuboidDepth);
+          
+          // Clear previous cuboid
+          if (cuboidWireframeRef.current && sceneRef.current) {
+            try {
+              sceneRef.current.remove(cuboidWireframeRef.current);
+              if (cuboidWireframeRef.current.geometry) cuboidWireframeRef.current.geometry.dispose();
+              if (cuboidWireframeRef.current.material) cuboidWireframeRef.current.material.dispose();
+              cuboidWireframeRef.current = null;
+            } catch (err) {
+              console.error('Main_View: Error clearing previous cuboid:', err);
+            }
+          }
+        } else {
+          if (e.button === 0) isRotating = true;
+          if (e.button === 2) isPanning = true;
+          mouseX = e.clientX;
+          mouseY = e.clientY;
         }
-      } else {
-        if (e.button === 0) isRotating = true;
-        if (e.button === 2) isPanning = true;
-        mouseX = e.clientX;
-        mouseY = e.clientY;
+      } catch (err) {
+        console.error('Main_View: Error in handleMouseDown:', err);
       }
     };
 
     const handleMouseUp = (e) => {
-      console.log('Main_View: Mouse up - selectionMode:', selectionModeRef.current, 'selectionStartPos:', selectionStartPos);
-      if (selectionModeRef.current && selectionStartPos) {
-        // Complete 3D cuboid selection
-        const endX = e.clientX;
-        const endY = e.clientY;
-        
-        console.log('Main_View: Selection completed - start:', selectionStartPos, 'end:', { x: endX, y: endY }, 'depth:', currentCuboidDepth);
-        
-        // Get final world bounds with current depth
-        const worldBounds = getWorldBoundsFromSelection(
-          selectionStartPos.x, 
-          selectionStartPos.y, 
-          endX, 
-          endY, 
-          currentCuboidDepth
-        );
-        
-        console.log('Main_View: World bounds from selection:', worldBounds);
-        
-        if (worldBounds) {
-          // Keep wireframe visible
-          updateCuboidWireframe(worldBounds);
+      try {
+        console.log('Main_View: Mouse up - selectionMode:', selectionModeRef.current, 'selectionStartPos:', selectionStartPos);
+        if (selectionModeRef.current && selectionStartPos) {
+          // Complete 3D cuboid selection
+          const endX = e.clientX;
+          const endY = e.clientY;
           
-          // Extract and send selection data
-          console.log('Main_View: Calling handleSelectionComplete...');
-          handleSelectionComplete(worldBounds);
+          console.log('Main_View: Selection completed - start:', selectionStartPos, 'end:', { x: endX, y: endY }, 'depth:', currentCuboidDepth);
+          
+          // Get final world bounds with current depth
+          const worldBounds = getWorldBoundsFromSelection(
+            selectionStartPos.x, 
+            selectionStartPos.y, 
+            endX, 
+            endY, 
+            currentCuboidDepth
+          );
+          
+          console.log('Main_View: World bounds from selection:', worldBounds);
+          
+          if (worldBounds) {
+            try {
+              // Keep wireframe visible
+              updateCuboidWireframe(worldBounds);
+              
+              // Extract and send selection data
+              console.log('Main_View: Calling handleSelectionComplete...');
+              handleSelectionComplete(worldBounds).catch(err => {
+                console.error('Main_View: Error in handleSelectionComplete:', err);
+              });
+            } catch (err) {
+              console.error('Main_View: Error updating cuboid wireframe:', err);
+            }
+          } else {
+            console.warn('Main_View: No world bounds calculated from selection');
+          }
+          
+          setIsSelecting(false);
+          setSelectionStart(null);
+          setSelectionEnd(null);
+          selectionStartPos = null;
         } else {
-          console.warn('Main_View: No world bounds calculated from selection');
+          isRotating = false;
+          isPanning = false;
         }
-        
+      } catch (err) {
+        console.error('Main_View: Error in handleMouseUp:', err);
         setIsSelecting(false);
-        setSelectionStart(null);
-        setSelectionEnd(null);
-        selectionStartPos = null;
-      } else {
         isRotating = false;
         isPanning = false;
       }
     };
 
     const handleMouseMove = (e) => {
-      if (selectionModeRef.current && selectionStartPos) {
-        // Update 3D cuboid selection box
-        setSelectionEnd({ x: e.clientX, y: e.clientY });
-        
-        // Update wireframe in real-time
-        const worldBounds = getWorldBoundsFromSelection(
-          selectionStartPos.x,
-          selectionStartPos.y,
-          e.clientX,
-          e.clientY,
-          currentCuboidDepth
-        );
-        
-        if (worldBounds) {
-          updateCuboidWireframe(worldBounds);
-          setCuboidCenter(worldBounds.center);
-          setCuboidSize(worldBounds.size);
+      try {
+        if (selectionModeRef.current && selectionStartPos) {
+          // Update 3D cuboid selection box
+          setSelectionEnd({ x: e.clientX, y: e.clientY });
+          
+          // Update wireframe in real-time
+          const worldBounds = getWorldBoundsFromSelection(
+            selectionStartPos.x,
+            selectionStartPos.y,
+            e.clientX,
+            e.clientY,
+            currentCuboidDepth
+          );
+          
+          if (worldBounds) {
+            try {
+              updateCuboidWireframe(worldBounds);
+              setCuboidCenter(worldBounds.center);
+              setCuboidSize(worldBounds.size);
+            } catch (err) {
+              console.error('Main_View: Error updating wireframe:', err);
+            }
+          }
+        } else {
+          const state = cameraStateRef.current;
+          if (isRotating) {
+            state.rotation.y += (e.clientX - mouseX) * 0.01;
+            state.rotation.x = clamp(state.rotation.x + (e.clientY - mouseY) * 0.01, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
+            updateCameraPosition();
+            updateChannelLOD();
+          }
+          if (isPanning) {
+            state.panOffset.x += (e.clientX - mouseX) * 0.001;
+            state.panOffset.y -= (e.clientY - mouseY) * 0.001;
+            updateCameraPosition();
+          }
         }
-      } else {
-        const state = cameraStateRef.current;
-        if (isRotating) {
-          state.rotation.y += (e.clientX - mouseX) * 0.01;
-          state.rotation.x = clamp(state.rotation.x + (e.clientY - mouseY) * 0.01, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
-          updateCameraPosition();
-          updateChannelLOD();
-        }
-        if (isPanning) {
-          state.panOffset.x += (e.clientX - mouseX) * 0.001;
-          state.panOffset.y -= (e.clientY - mouseY) * 0.001;
-          updateCameraPosition();
-        }
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      } catch (err) {
+        console.error('Main_View: Error in handleMouseMove:', err);
       }
-      mouseX = e.clientX;
-      mouseY = e.clientY;
     };
 
     const handleWheel = (e) => {
-      if (selectionModeRef.current && isSelecting && selectionStartPos) {
-        // Adjust Z-depth during selection
-        e.preventDefault();
-        const depthDelta = e.deltaY * 0.0001;
-        currentCuboidDepth = Math.max(0.01, Math.min(1.0, currentCuboidDepth + depthDelta));
-        setCuboidDepth(currentCuboidDepth);
-        
-        // Update wireframe with new depth
-        const worldBounds = getWorldBoundsFromSelection(
-          selectionStartPos.x,
-          selectionStartPos.y,
-          selectionEnd?.x || selectionStartPos.x,
-          selectionEnd?.y || selectionStartPos.y,
-          currentCuboidDepth
-        );
-        
-        if (worldBounds) {
-          updateCuboidWireframe(worldBounds);
-          setCuboidCenter(worldBounds.center);
-          setCuboidSize(worldBounds.size);
+      try {
+        if (selectionModeRef.current && isSelectingRef.current && selectionStartPos) {
+          // Adjust Z-depth during selection
+          e.preventDefault();
+          const depthDelta = e.deltaY * 0.0001;
+          currentCuboidDepth = Math.max(0.01, Math.min(1.0, currentCuboidDepth + depthDelta));
+          setCuboidDepth(currentCuboidDepth);
+          
+          // Update wireframe with new depth
+          const endPos = selectionEndRef.current || selectionStartPos;
+          const worldBounds = getWorldBoundsFromSelection(
+            selectionStartPos.x,
+            selectionStartPos.y,
+            endPos.x || selectionStartPos.x,
+            endPos.y || selectionStartPos.y,
+            currentCuboidDepth
+          );
+          
+          if (worldBounds) {
+            try {
+              updateCuboidWireframe(worldBounds);
+              setCuboidCenter(worldBounds.center);
+              setCuboidSize(worldBounds.size);
+            } catch (err) {
+              console.error('Main_View: Error updating wireframe on wheel:', err);
+            }
+          }
+        } else {
+          const state = cameraStateRef.current;
+          state.distance *= 1 + e.deltaY * 0.001;
+          state.distance = clamp(state.distance, 0.1, 20);
+          updateCameraPosition();
+          updateChannelLOD();
         }
-      } else {
-        const state = cameraStateRef.current;
-        state.distance *= 1 + e.deltaY * 0.001;
-        state.distance = clamp(state.distance, 0.1, 20);
-        updateCameraPosition();
-        updateChannelLOD();
+      } catch (err) {
+        console.error('Main_View: Error in handleWheel:', err);
       }
     };
 
@@ -1140,6 +1240,67 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     loadChannels();
   }, [channels, createChannelVisualization, getDesiredSampling, loadChannelData, renderScene]);
 
+  // Calculate dimensions in micrometers (assuming 1 voxel = 1 μm, adjust as needed)
+  const getCuboidDimensions = () => {
+    try {
+      if (!cuboidSize || !cuboidRef.current) return null;
+      
+      // Get first channel metadata for voxel-to-μm conversion
+      const visibleChannels = channels.filter(c => c.visible !== false);
+      if (visibleChannels.length === 0) return null;
+      
+      const firstChannel = visibleChannels[0];
+      const channelData = channelDataCacheRef.current.get(firstChannel.channelIndex);
+      if (!channelData) return null;
+      
+      const { metadata } = channelData;
+      const [zSize, ySize, xSize] = metadata.shape;
+      
+      // Calculate voxel dimensions from world bounds
+      // Convert world bounds back to voxel coordinates
+      const maxDim = Math.max(zSize, ySize, xSize);
+      const scaleX = xSize / maxDim;
+      const scaleY = ySize / maxDim;
+      const scaleZ = (zSize / maxDim) / 4;
+      
+      // Convert world bounds to voxel coordinates
+      const worldMin = cuboidRef.current.min;
+      const worldMax = cuboidRef.current.max;
+      
+      if (!worldMin || !worldMax) return null;
+      
+      let voxelMinX = Math.max(0, Math.floor(((worldMin.x / scaleX + 1) / 2) * xSize));
+      let voxelMaxX = Math.min(xSize - 1, Math.ceil(((worldMax.x / scaleX + 1) / 2) * xSize));
+      let voxelMinY = Math.max(0, Math.floor(((worldMin.y / scaleY + 1) / 2) * ySize));
+      let voxelMaxY = Math.min(ySize - 1, Math.ceil(((worldMax.y / scaleY + 1) / 2) * ySize));
+      let voxelMinZ = Math.max(0, Math.floor(((worldMin.z / scaleZ + 1) / 2) * zSize));
+      let voxelMaxZ = Math.min(zSize - 1, Math.ceil(((worldMax.z / scaleZ + 1) / 2) * zSize));
+      
+      // Ensure min <= max
+      if (voxelMinX > voxelMaxX) [voxelMinX, voxelMaxX] = [voxelMaxX, voxelMinX];
+      if (voxelMinY > voxelMaxY) [voxelMinY, voxelMaxY] = [voxelMaxY, voxelMinY];
+      if (voxelMinZ > voxelMaxZ) [voxelMinZ, voxelMaxZ] = [voxelMaxZ, voxelMinZ];
+      
+      const voxelWidth = voxelMaxX - voxelMinX + 1;
+      const voxelHeight = voxelMaxY - voxelMinY + 1;
+      const voxelDepth = voxelMaxZ - voxelMinZ + 1;
+      
+      // Convert to micrometers (assuming 1 voxel = 1 μm, adjust if needed)
+      const voxelSize = 1; // μm per voxel
+      return {
+        width: (voxelWidth * voxelSize).toFixed(1),
+        height: (voxelHeight * voxelSize).toFixed(1),
+        depth: (voxelDepth * voxelSize).toFixed(1),
+        volume: ((voxelWidth * voxelHeight * voxelDepth) * voxelSize * voxelSize * voxelSize).toFixed(1)
+      };
+    } catch (err) {
+      console.error('Main_View: Error calculating cuboid dimensions:', err);
+      return null;
+    }
+  };
+
+  const cuboidDimensions = getCuboidDimensions();
+
   return (
     <div style={{ 
       height: '100%', 
@@ -1160,17 +1321,61 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       
       {/* Selection Mode Toggle Button */}
       <button
-        onClick={() => {
-          const newMode = !selectionMode;
-          console.log('Main_View: Selection mode toggled:', newMode);
-          setSelectionMode(newMode);
-          // Clear cuboid when disabling selection
-          if (selectionMode && cuboidWireframeRef.current && sceneRef.current) {
-            sceneRef.current.remove(cuboidWireframeRef.current);
-            cuboidWireframeRef.current = null;
-            cuboidRef.current = null;
-            setCuboidCenter(null);
-            setCuboidSize(null);
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Prevent rapid clicking
+          if (isTogglingRef.current) {
+            console.log('Main_View: Toggle already in progress, ignoring click');
+            return;
+          }
+          
+          try {
+            isTogglingRef.current = true;
+            const newMode = !selectionMode;
+            console.log('Main_View: Selection mode toggled:', newMode);
+            
+            // Update state immediately
+            setSelectionMode(newMode);
+            
+            // Clear cuboid when disabling selection (defer to avoid render issues)
+            if (!newMode && cuboidWireframeRef.current && sceneRef.current) {
+              requestAnimationFrame(() => {
+                try {
+                  if (sceneRef.current && cuboidWireframeRef.current) {
+                    if (sceneRef.current.children.includes(cuboidWireframeRef.current)) {
+                      sceneRef.current.remove(cuboidWireframeRef.current);
+                    }
+                    if (cuboidWireframeRef.current.geometry) {
+                      cuboidWireframeRef.current.geometry.dispose();
+                    }
+                    if (cuboidWireframeRef.current.material) {
+                      cuboidWireframeRef.current.material.dispose();
+                    }
+                    cuboidWireframeRef.current = null;
+                    cuboidRef.current = null;
+                    setCuboidCenter(null);
+                    setCuboidSize(null);
+                  }
+                } catch (err) {
+                  console.error('Main_View: Error clearing cuboid:', err);
+                } finally {
+                  isTogglingRef.current = false;
+                }
+              });
+            } else {
+              isTogglingRef.current = false;
+            }
+          } catch (err) {
+            console.error('Main_View: Error toggling selection mode:', err);
+            isTogglingRef.current = false;
+            // Still update state even if cleanup fails
+            try {
+              setSelectionMode(!selectionMode);
+            } catch (stateErr) {
+              console.error('Main_View: Failed to update state:', stateErr);
+            }
           }
         }}
         style={{
