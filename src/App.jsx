@@ -27,15 +27,22 @@ function App() {
     setChannels(updatedChannels);
   }, []);
 
-  const handleSelectionChange = (selectedData) => {
+  const handleSelectionChange = useCallback((selectedData) => {
     console.log('App: ===== RECEIVED SELECTION DATA =====');
     console.log('App: Selected data received:', selectedData);
     console.log('App: Bounds:', selectedData?.bounds);
     console.log('App: Channels:', selectedData?.channels);
+    console.log('App: Scaling:', selectedData?.scaling);
     console.log('App: Setting selectedRegionData state...');
+    
+    if (!selectedData || !selectedData.bounds) {
+      console.error('App: Invalid selection data received:', selectedData);
+      return;
+    }
+    
     setSelectedRegionData(selectedData);
     console.log('App: ✓ selectedRegionData state updated');
-  };
+  }, []);
 
   const buildAggregatedChannels = useCallback((regions) => {
     return regions.flatMap((region) =>
@@ -199,7 +206,7 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Graph_Pannel />
+              <Graph_Pannel selectedRegionData={selectedRegionData} channels={channels} />
             </div>
             {/* Direction View - 33.3% width */}
             <div style={{ 
