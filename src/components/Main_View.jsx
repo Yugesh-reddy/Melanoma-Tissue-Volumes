@@ -15,12 +15,14 @@ const CAMERA_INITIAL_STATE = {
 const MOVE_SPEED = 0.05;
 const FAST_MOVE_SPEED = 0.15;
 const LOD_COOLDOWN_MS = 200;
-const MAX_POINTS_PER_CHANNEL = 5000_000;
+const MAX_POINTS_PER_CHANNEL = 50000000;
 const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
 const EDGE_FEATHER = 0.99;
 const JITTER_SCALE = 0.1;
 const AMBIENT_COLOR = new THREE.Color(0.9, 0.9, 0.95);
+const DEFAULT_THRESHOLD_MIN_FRACTION = 0.1;
+const DEFAULT_THRESHOLD_MAX_FRACTION = 0.9;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -64,7 +66,7 @@ const getConfigSignature = (config) =>
     config.opacity ?? ''
   ].join('|');
 
-const Main_View = ({ channels = [], onSelectionChange }) => {
+const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -153,9 +155,12 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
     if (!zSize || !ySize || !xSize) return null;
 
     const [dataMin = 0, dataMax = 65535] = metadata.dataRange || [];
+    const rangeSpan = Math.max(1, dataMax - dataMin);
+    const autoMin = Math.round(dataMin + rangeSpan * DEFAULT_THRESHOLD_MIN_FRACTION);
+    const autoMax = Math.round(dataMin + rangeSpan * DEFAULT_THRESHOLD_MAX_FRACTION);
 
-    let minThreshold = thresholdMin ?? dataMin;
-    let maxThreshold = thresholdMax ?? dataMax;
+    let minThreshold = thresholdMin ?? autoMin;
+    let maxThreshold = thresholdMax ?? autoMax;
     if (minThreshold > maxThreshold) {
       [minThreshold, maxThreshold] = [maxThreshold, minThreshold];
     }
@@ -177,19 +182,20 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
     const scaleZ = (zSize / maxDim) / 4;
 
     const totalVoxels = zSize * ySize * xSize;
-    const estimatedPassing = totalVoxels * 0.15;
+    const estimatedPassing = totalVoxels * 0.08;
     let sampling = 1;
 
     if (estimatedPassing > MAX_POINTS_PER_CHANNEL) {
       const ratio = estimatedPassing / MAX_POINTS_PER_CHANNEL;
-      sampling = Math.max(2, Math.ceil(Math.cbrt(ratio * 1.5)));
-      if (totalVoxels > 5000_000) {
+      sampling = Math.max(2, Math.ceil(Math.cbrt(Math.max(ratio, 1) * 2)));
+      if (totalVoxels > 20_000_000) {
         sampling = Math.max(sampling, 4);
       }
     }
 
     if (samplingOverride !== undefined) {
-      sampling = Math.max(1, Math.round(samplingOverride));
+      const overrideValue = Math.max(1, Math.round(samplingOverride));
+      sampling = Math.max(sampling, overrideValue);
     }
 
     console.log(`Channel visualization: shape=${metadata.shape}, sampling=${sampling}, totalVoxels=${totalVoxels}`);
@@ -691,8 +697,8 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    if (renderer.outputEncoding !== undefined) {
-      renderer.outputEncoding = THREE.sRGBEncoding;
+    if (renderer.outputColorSpace !== undefined) {
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
     }
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -1068,12 +1074,24 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
         if (channelConfig.visible === false) continue;
 
         try {
+          const currentConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
+          if (!currentConfig || getConfigSignature(currentConfig) !== getConfigSignature(channelConfig)) {
+            console.log(`Main_View: ⏭️ Skipping stale load for channel ${channelConfig.channelIndex}`);
+            continue;
+          }
+
           let channelData = channelDataCache.get(channelConfig.channelIndex);
           if (!channelData) {
             channelData = await loadChannelData(channelConfig.channelIndex);
             if (channelData) {
               channelDataCache.set(channelConfig.channelIndex, channelData);
             }
+          }
+
+          const latestConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
+          if (!latestConfig || getConfigSignature(latestConfig) !== getConfigSignature(channelConfig)) {
+            console.log(`Main_View: ⏹️ Loaded data discarded for channel ${channelConfig.channelIndex} (stale)`);
+            continue;
           }
 
           if (!channelData) continue;
@@ -1122,63 +1140,23 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
     loadChannels();
   }, [channels, createChannelVisualization, getDesiredSampling, loadChannelData, renderScene]);
 
-  // Calculate dimensions in micrometers (assuming 1 voxel = 1 μm, adjust as needed)
-  const getCuboidDimensions = () => {
-    if (!cuboidSize || !cuboidRef.current) return null;
-    
-    // Get first channel metadata for voxel-to-μm conversion
-    const visibleChannels = channels.filter(c => c.visible !== false);
-    if (visibleChannels.length === 0) return null;
-    
-    const firstChannel = visibleChannels[0];
-    const channelData = channelDataCacheRef.current.get(firstChannel.channelIndex);
-    if (!channelData) return null;
-    
-    const { metadata } = channelData;
-    const [zSize, ySize, xSize] = metadata.shape;
-    
-    // Calculate voxel dimensions from world bounds
-    // Convert world bounds back to voxel coordinates
-    const maxDim = Math.max(zSize, ySize, xSize);
-    const scaleX = xSize / maxDim;
-    const scaleY = ySize / maxDim;
-    const scaleZ = (zSize / maxDim) / 4;
-    
-    // Convert world bounds to voxel coordinates
-    const worldMin = cuboidRef.current.min;
-    const worldMax = cuboidRef.current.max;
-    
-    let voxelMinX = Math.max(0, Math.floor(((worldMin.x / scaleX + 1) / 2) * xSize));
-    let voxelMaxX = Math.min(xSize - 1, Math.ceil(((worldMax.x / scaleX + 1) / 2) * xSize));
-    let voxelMinY = Math.max(0, Math.floor(((worldMin.y / scaleY + 1) / 2) * ySize));
-    let voxelMaxY = Math.min(ySize - 1, Math.ceil(((worldMax.y / scaleY + 1) / 2) * ySize));
-    let voxelMinZ = Math.max(0, Math.floor(((worldMin.z / scaleZ + 1) / 2) * zSize));
-    let voxelMaxZ = Math.min(zSize - 1, Math.ceil(((worldMax.z / scaleZ + 1) / 2) * zSize));
-    
-    // Ensure min <= max
-    if (voxelMinX > voxelMaxX) [voxelMinX, voxelMaxX] = [voxelMaxX, voxelMinX];
-    if (voxelMinY > voxelMaxY) [voxelMinY, voxelMaxY] = [voxelMaxY, voxelMinY];
-    if (voxelMinZ > voxelMaxZ) [voxelMinZ, voxelMaxZ] = [voxelMaxZ, voxelMinZ];
-    
-    const voxelWidth = voxelMaxX - voxelMinX + 1;
-    const voxelHeight = voxelMaxY - voxelMinY + 1;
-    const voxelDepth = voxelMaxZ - voxelMinZ + 1;
-    
-    // Convert to micrometers (assuming 1 voxel = 1 μm, adjust if needed)
-    const voxelSize = 1; // μm per voxel
-    return {
-      width: (voxelWidth * voxelSize).toFixed(1),
-      height: (voxelHeight * voxelSize).toFixed(1),
-      depth: (voxelDepth * voxelSize).toFixed(1),
-      volume: ((voxelWidth * voxelHeight * voxelDepth) * voxelSize * voxelSize * voxelSize).toFixed(1)
-    };
-  };
-
-  const cuboidDimensions = getCuboidDimensions();
-
   return (
-    <div style={{ height: '100%', width: '100%', position: 'relative', backgroundColor: '#000000' }}>
-      <div ref={mountRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+    <div style={{ 
+      height: '100%', 
+      width: '100%', 
+      position: 'relative', 
+      backgroundColor: '#000000',
+      overflow: 'hidden',
+      boxSizing: 'border-box'
+    }}>
+      <div ref={mountRef} style={{ 
+        width: '100%', 
+        height: '100%', 
+        position: 'absolute', 
+        top: 0, 
+        left: 0,
+        overflow: 'hidden'
+      }} />
       
       {/* Selection Mode Toggle Button */}
       <button
@@ -1245,6 +1223,60 @@ const Main_View = ({ channels = [], onSelectionChange }) => {
               Scroll to adjust Z-depth
             </div>
           )}
+        </div>
+      )}
+      
+      {/* Active Regions HUD */}
+      {activeRegions.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '16px',
+            left: '16px',
+            background: 'rgba(0, 0, 0, 0.65)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
+            borderRadius: '8px',
+            padding: '12px 14px',
+            color: '#FFFFFF',
+            pointerEvents: 'none',
+            backdropFilter: 'blur(6px)',
+            maxWidth: '260px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}
+        >
+          {activeRegions.map((region) => (
+            <div key={`hud-${region.id}`} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                {region.title}
+              </div>
+              {region.topMarkers.map((marker) => (
+                <div
+                  key={`${region.id}-${marker.name}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '12px',
+                    lineHeight: 1.4
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '12px',
+                      height: '12px',
+                      borderRadius: '3px',
+                      backgroundColor: marker.color,
+                      border: '1px solid rgba(255,255,255,0.25)',
+                      flexShrink: 0
+                    }}
+                  />
+                  <span>{marker.name}</span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </div>

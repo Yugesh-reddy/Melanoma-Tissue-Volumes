@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import channelNamesData from '../channel_names.json';
 
 // Generate channel options (0-69 based on data shape)
@@ -12,8 +12,15 @@ const rgbToHex = (r, g, b) => {
   }).join('');
 };
 
-const ChannelSelection = ({ onChannelsChange }) => {
+const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion = 0 }) => {
   const [channels, setChannels] = useState([]);
+  const presetVersionRef = useRef(null);
+  const presetChannelsRef = useRef(presetChannels);
+  const applyingPresetRef = useRef(false);
+
+  useEffect(() => {
+    presetChannelsRef.current = presetChannels;
+  }, [presetChannels]);
   
   
   const [channelRanges, setChannelRanges] = useState({}); // Store data ranges for each channel
@@ -67,6 +74,48 @@ const ChannelSelection = ({ onChannelsChange }) => {
     () => channels.map((c) => c.channelIndex).join(','),
     [channels]
   );
+
+  useEffect(() => {
+    if (presetVersion === undefined || presetVersion === null) return;
+    if (presetVersionRef.current === presetVersion) return;
+    presetVersionRef.current = presetVersion;
+
+    const externalChannels = Array.isArray(presetChannelsRef.current)
+      ? presetChannelsRef.current
+      : [];
+
+    const usedIds = new Set();
+    const normalizedChannels = externalChannels.map((channel, idx) => {
+      const baseId = channel.id ?? channel.channelIndex ?? idx;
+      let candidateId = String(baseId);
+      let duplicateCounter = 1;
+      while (usedIds.has(candidateId)) {
+        candidateId = `${baseId}_${duplicateCounter++}`;
+      }
+      usedIds.add(candidateId);
+
+      return {
+        ...channel,
+        id: candidateId,
+        visible: channel.visible !== false,
+        opacity: channel.opacity ?? 1,
+        color: channel.color || '#ffffff'
+      };
+    });
+
+    const initialPending = {};
+    normalizedChannels.forEach((channel) => {
+      initialPending[channel.id] = {
+        thresholdMin: channel.thresholdMin ?? 0,
+        thresholdMax: channel.thresholdMax ?? 0
+      };
+    });
+
+    setChannelRanges({});
+    setPendingThresholds(initialPending);
+    applyingPresetRef.current = true;
+    setChannels(normalizedChannels);
+  }, [presetVersion, onChannelsChange]);
 
   // Keep pending thresholds in sync with channel list
   useEffect(() => {
@@ -187,13 +236,21 @@ const ChannelSelection = ({ onChannelsChange }) => {
   
   // Notify parent on mount and whenever channels change
   useEffect(() => {
+    if (applyingPresetRef.current) {
+      applyingPresetRef.current = false;
+      return;
+    }
     if (onChannelsChange) {
       onChannelsChange(channels);
     }
   }, [channels, onChannelsChange]);
 
   const addChannel = async () => {
-    const newId = channels.length > 0 ? Math.max(...channels.map(c => c.id)) + 1 : 0;
+    const numericIds = channels
+      .map((c) => (typeof c.id === 'number' && Number.isFinite(c.id) ? c.id : null))
+      .filter((id) => id !== null);
+    const maxId = numericIds.length > 0 ? Math.max(...numericIds) : -1;
+    const newId = maxId + 1;
     
     // Try to load data range for channel 0
     let dataRange = [0, 65535];
@@ -407,10 +464,11 @@ const ChannelSelection = ({ onChannelsChange }) => {
       backgroundColor: '#000000',
       border: '1px solid #444',
       padding: '10px',
-      overflow: 'auto',
       display: 'flex',
       flexDirection: 'column',
-      fontSize: '12px'
+      fontSize: '12px',
+      boxSizing: 'border-box',
+      overflow: 'hidden'
     }}>
       {/* Header */}
       <div style={{ 
