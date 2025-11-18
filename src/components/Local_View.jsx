@@ -342,7 +342,28 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     }
 
     // Use current channels if provided, otherwise use stored channels
-    const channelsToUse = channelsOverride || selectedData.channels || [];
+    // When using current channels, match them by channelIndex to ensure we only show channels from the original selection
+    let channelsToUse = [];
+    
+    if (channelsOverride && channelsOverride.length > 0 && selectedData.channels && selectedData.channels.length > 0) {
+      // Match current channels to selected channels by channelIndex
+      const selectedChannelIndices = new Set(selectedData.channels.map(c => c.channelIndex));
+      console.log('Local_View: Selected channel indices:', Array.from(selectedChannelIndices));
+      console.log('Local_View: Current channel indices:', channelsOverride.map(c => c.channelIndex));
+      
+      channelsToUse = channelsOverride.filter(c => selectedChannelIndices.has(c.channelIndex));
+      console.log(`Local_View: Matched ${channelsToUse.length} current channel(s) to selection`);
+      
+      // Fallback to stored channels if no matches
+      if (channelsToUse.length === 0) {
+        console.warn('Local_View: No current channels matched, using stored channels');
+        channelsToUse = selectedData.channels || [];
+      }
+    } else {
+      // Use stored channels if current channels not available
+      channelsToUse = channelsOverride || selectedData.channels || [];
+      console.log(`Local_View: Using ${channelsToUse.length} ${channelsOverride ? 'current' : 'stored'} channel(s)`);
+    }
     
     if (channelsToUse.length === 0) {
       console.log('Local_View: No channels available');
@@ -477,22 +498,39 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     
     console.log(`Local_View: Center offset to apply: (${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
     
+    console.log(`Local_View: Processing ${visibleChannels.length} visible channel(s)`);
     for (const channelConfig of visibleChannels) {
-      const channelData = await loadChannelData(channelConfig.channelIndex);
-      if (!channelData) {
-        console.log(`Local_View: Failed to load channel ${channelConfig.channelIndex}`);
-        continue;
-      }
+      try {
+        console.log(`Local_View: Loading channel ${channelConfig.channelIndex}...`);
+        const channelData = await loadChannelData(channelConfig.channelIndex);
+        if (!channelData) {
+          console.warn(`Local_View: Failed to load channel ${channelConfig.channelIndex}`);
+          continue;
+        }
+        console.log(`Local_View: Channel ${channelConfig.channelIndex} loaded, creating visualization...`);
 
-      const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
-      if (mesh) {
-        scene.add(mesh);
-        voxelMeshesRef.current.push(mesh);
-        meshCount++;
-        totalCellCount += mesh.geometry.instanceCount;
-        console.log(`Local_View: Added mesh for channel ${channelConfig.channelIndex} with ${mesh.geometry.instanceCount} instances`);
-      } else {
-        console.log(`Local_View: No mesh created for channel ${channelConfig.channelIndex} (no points in bounds)`);
+        const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
+        if (mesh) {
+          console.log(`Local_View: Mesh created for channel ${channelConfig.channelIndex}, adding to scene...`);
+          
+          // Ensure mesh is visible and properly configured
+          mesh.visible = true;
+          mesh.frustumCulled = false;
+          
+          scene.add(mesh);
+          voxelMeshesRef.current.push(mesh);
+          meshCount++;
+          totalCellCount += mesh.geometry.instanceCount;
+          console.log(`Local_View: ✓ Added mesh for channel ${channelConfig.channelIndex} with ${mesh.geometry.instanceCount} instances`);
+          console.log(`Local_View: Mesh position:`, mesh.position);
+          console.log(`Local_View: Mesh visible:`, mesh.visible);
+          console.log(`Local_View: Mesh in scene:`, scene.children.includes(mesh));
+        } else {
+          console.warn(`Local_View: ✗ No mesh created for channel ${channelConfig.channelIndex} (no points in bounds)`);
+        }
+      } catch (error) {
+        console.error(`Local_View: Error processing channel ${channelConfig.channelIndex}:`, error);
+        console.error(`Local_View: Error stack:`, error.stack);
       }
     }
     
@@ -523,17 +561,24 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     
     // Calculate camera distance based on ACTUAL cuboid dimensions (not auto-fit)
     // Use the maximum dimension of the bounding box to determine appropriate distance
-    const maxDimension = Math.max(boxSize.x, boxSize.y, boxSize.z);
+    const maxDimension = Math.max(Math.abs(boxSize.x), Math.abs(boxSize.y), Math.abs(boxSize.z));
     
-    // Calculate camera distance to show the cuboid with appropriate padding
-    // Formula: distance = (maxDimension / 2) / tan(fov/2) * paddingFactor
-    const fovRad = (60 * Math.PI) / 180; // Camera FOV in radians
-    const paddingFactor = 1.5; // Padding around cuboid (1.5x = 50% padding)
-    const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
-    cameraStateRef.current.distance = baseDistance * paddingFactor;
-    
-    // Clamp distance to reasonable bounds
-    cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, cameraStateRef.current.distance));
+    // Ensure we have a valid dimension
+    if (maxDimension > 0 && isFinite(maxDimension)) {
+      // Calculate camera distance to show the cuboid with appropriate padding
+      // Formula: distance = (maxDimension / 2) / tan(fov/2) * paddingFactor
+      const fovRad = (60 * Math.PI) / 180; // Camera FOV in radians
+      const paddingFactor = 2.0; // Increased padding for better view
+      const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
+      cameraStateRef.current.distance = baseDistance * paddingFactor;
+      
+      // Clamp distance to reasonable bounds
+      cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, cameraStateRef.current.distance));
+    } else {
+      // Fallback to a reasonable default distance
+      console.warn('Local_View: Invalid maxDimension, using default camera distance');
+      cameraStateRef.current.distance = 0.5;
+    }
     
     // Reset camera rotation to a good viewing angle
     cameraStateRef.current.rotation = { x: 0.5, y: 0.5 };
@@ -553,14 +598,26 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     
     // Force multiple renders to ensure visualization is displayed immediately
     if (rendererRef.current && cameraRef.current && sceneRef.current) {
+      // Update camera and lighting first
+      updateCameraPosition();
+      updateLighting();
+      
       // Render immediately
       rendererRef.current.render(sceneRef.current, cameraRef.current);
+      
       // Also render on next frame to ensure it's visible
       requestAnimationFrame(() => {
         if (rendererRef.current && cameraRef.current && sceneRef.current) {
           updateCameraPosition();
           updateLighting();
           rendererRef.current.render(sceneRef.current, cameraRef.current);
+          
+          // One more render after a short delay to ensure everything is displayed
+          setTimeout(() => {
+            if (rendererRef.current && cameraRef.current && sceneRef.current) {
+              rendererRef.current.render(sceneRef.current, cameraRef.current);
+            }
+          }, 50);
         }
       });
     }
@@ -569,11 +626,19 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     console.log(`Local_View: Visualization complete - ${meshCount} meshes added to scene, ${totalCellCount} total cells`);
     console.log(`Local_View: Scene children count: ${sceneRef.current.children.length}`);
     console.log(`Local_View: Voxel meshes count: ${voxelMeshesRef.current.length}`);
+    console.log(`Local_View: Renderer exists:`, !!rendererRef.current);
+    console.log(`Local_View: Camera exists:`, !!cameraRef.current);
     
     // Log mesh details for debugging
     voxelMeshesRef.current.forEach((mesh, idx) => {
-      console.log(`Local_View: Mesh ${idx}: visible=${mesh.visible}, position=`, mesh.position, `instances=${mesh.geometry.instanceCount}`);
+      console.log(`Local_View: Mesh ${idx}: visible=${mesh.visible}, position=`, mesh.position, `instances=${mesh.geometry.instanceCount}, inScene=${sceneRef.current.children.includes(mesh)}`);
     });
+    
+    // Verify renderer is working
+    if (rendererRef.current && rendererRef.current.domElement) {
+      console.log(`Local_View: Renderer canvas size: ${rendererRef.current.domElement.width}x${rendererRef.current.domElement.height}`);
+      console.log(`Local_View: Renderer canvas visible:`, rendererRef.current.domElement.offsetWidth > 0 && rendererRef.current.domElement.offsetHeight > 0);
+    }
   };
 
   // Setup Three.js scene
@@ -605,8 +670,21 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     if (renderer.outputEncoding !== undefined) {
       renderer.outputEncoding = THREE.sRGBEncoding;
     }
+    
+    // Ensure canvas is visible and properly styled
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+    
+    console.log('Local_View: Renderer initialized, canvas size:', width, 'x', height);
+    console.log('Local_View: Canvas element:', renderer.domElement);
+    console.log('Local_View: Canvas visible:', renderer.domElement.offsetWidth > 0 && renderer.domElement.offsetHeight > 0);
 
     // Ambient light
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
@@ -659,8 +737,12 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     // Animation loop - ensure it always renders
     const animate = () => {
       if (cameraRef.current && sceneRef.current && rendererRef.current) {
-        updateLighting();
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
+        try {
+          updateLighting();
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        } catch (err) {
+          console.error('Local_View: Error in animation loop:', err);
+        }
       }
       animationRef.current = requestAnimationFrame(animate);
     };
@@ -668,8 +750,18 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     
     // Initial render to ensure something is displayed
     console.log('Local_View: Scene initialized, rendering initial frame');
-    if (cameraRef.current && sceneRef.current) {
-      renderer.render(scene, camera);
+    console.log('Local_View: Scene children:', scene.children.length);
+    console.log('Local_View: Camera position:', camera.position);
+    console.log('Local_View: Camera distance:', cameraStateRef.current.distance);
+    
+    if (cameraRef.current && sceneRef.current && rendererRef.current) {
+      try {
+        updateCameraPosition();
+        updateLighting();
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      } catch (err) {
+        console.error('Local_View: Error in initial render:', err);
+      }
     }
 
     // Resize handler
@@ -743,7 +835,28 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
 
     // Determine which channels to use - ALWAYS prefer current channels if available
     // Current channels have the latest filter settings that match Main_View
-    const channelsToUse = (channels && channels.length > 0) ? channels : selectedRegionData.channels;
+    // Match current channels to selected channels by channelIndex to ensure we only show channels from the original selection
+    let channelsToUse = [];
+    
+    if (channels && channels.length > 0 && selectedRegionData.channels && selectedRegionData.channels.length > 0) {
+      // Match current channels to selected channels by channelIndex
+      const selectedChannelIndices = new Set(selectedRegionData.channels.map(c => c.channelIndex));
+      console.log('Local_View: Selected channel indices:', Array.from(selectedChannelIndices));
+      console.log('Local_View: Current channel indices:', channels.map(c => c.channelIndex));
+      
+      channelsToUse = channels.filter(c => selectedChannelIndices.has(c.channelIndex));
+      console.log(`Local_View: Matched ${channelsToUse.length} current channel(s) to selection`);
+      
+      // Fallback to stored channels if no matches
+      if (channelsToUse.length === 0) {
+        console.warn('Local_View: No current channels matched, using stored channels');
+        channelsToUse = selectedRegionData.channels || [];
+      }
+    } else {
+      // Use stored channels if current channels not available
+      channelsToUse = (channels && channels.length > 0) ? channels : (selectedRegionData.channels || []);
+      console.log(`Local_View: Using ${channelsToUse.length} ${(channels && channels.length > 0) ? 'current' : 'stored'} channel(s)`);
+    }
     
     if (!channelsToUse || channelsToUse.length === 0) {
       console.log('Local_View: No channels available, waiting...');
@@ -932,6 +1045,24 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           </button>
         )}
       </h3>
+      
+      {/* Placeholder when no selection */}
+      {!selectedRegionData && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '#666',
+          fontSize: '12px',
+          textAlign: 'center',
+          zIndex: 50,
+          pointerEvents: 'none'
+        }}>
+          <div>No selection made</div>
+          <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
+        </div>
+      )}
       
       {/* Info Modal */}
       {selectedRegionData && sectionInfo && showInfoModal && (

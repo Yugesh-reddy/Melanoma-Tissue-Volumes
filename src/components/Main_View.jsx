@@ -615,8 +615,11 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   };
 
   // Extract selected region data from all visible channels using 3D cuboid bounds
-  const extractSelectedRegion = async (worldBounds) => {
-    if (!worldBounds || !worldBounds.min || !worldBounds.max) return null;
+  const extractSelectedRegion = useCallback(async (worldBounds) => {
+    if (!worldBounds || !worldBounds.min || !worldBounds.max) {
+      console.warn('Main_View: extractSelectedRegion - Invalid world bounds:', worldBounds);
+      return null;
+    }
     
     const selectedData = {
       channels: [],
@@ -626,7 +629,10 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     
     // Get first channel metadata to calculate voxel bounds
     const visibleChannels = channels.filter(c => c.visible !== false);
-    if (visibleChannels.length === 0) return null;
+    if (visibleChannels.length === 0) {
+      console.warn('Main_View: extractSelectedRegion - No visible channels');
+      return null;
+    }
     
     const firstChannel = visibleChannels[0];
     const channelData = channelDataCacheRef.current.get(firstChannel.channelIndex);
@@ -691,10 +697,10 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     console.log(`Main_View: Added ${selectedData.channels.length} channels to selection`);
     
     return selectedData;
-  };
+  }, [channels]);
 
   // Handle selection completion with 3D cuboid bounds
-  const handleSelectionComplete = async (worldBounds) => {
+  const handleSelectionComplete = useCallback(async (worldBounds) => {
     if (!worldBounds) {
       console.warn('Main_View: Invalid world bounds');
       return;
@@ -708,27 +714,32 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     console.log('Main_View: Current channels:', channels);
     console.log('Main_View: onSelectionChange callback exists:', !!onSelectionChange);
     
-    const selectedData = await extractSelectedRegion(worldBounds);
-    if (selectedData) {
-      console.log('Main_View: ✓ Extracted selected region data:', selectedData);
-      console.log('Main_View: Voxel bounds:', selectedData.bounds);
-      console.log('Main_View: Channels count:', selectedData.channels.length);
-      console.log('Main_View: Channels:', selectedData.channels);
-      console.log('Main_View: Scaling factors:', selectedData.scaling);
-      
-      if (onSelectionChange) {
-        console.log('Main_View: Calling onSelectionChange callback...');
-        onSelectionChange(selectedData);
-        console.log('Main_View: ✓ onSelectionChange called successfully');
+    try {
+      const selectedData = await extractSelectedRegion(worldBounds);
+      if (selectedData) {
+        console.log('Main_View: ✓ Extracted selected region data:', selectedData);
+        console.log('Main_View: Voxel bounds:', selectedData.bounds);
+        console.log('Main_View: Channels count:', selectedData.channels.length);
+        console.log('Main_View: Channels:', selectedData.channels);
+        console.log('Main_View: Scaling factors:', selectedData.scaling);
+        
+        if (onSelectionChange) {
+          console.log('Main_View: Calling onSelectionChange callback...');
+          onSelectionChange(selectedData);
+          console.log('Main_View: ✓ onSelectionChange called successfully');
+        } else {
+          console.error('Main_View: ✗ onSelectionChange callback is NULL!');
+        }
       } else {
-        console.error('Main_View: ✗ onSelectionChange callback is NULL!');
+        console.error('Main_View: ✗ Failed to extract selected region data');
+        console.error('Main_View: World bounds were:', worldBounds);
+        console.error('Main_View: Visible channels:', channels.filter(c => c.visible !== false));
       }
-    } else {
-      console.error('Main_View: ✗ Failed to extract selected region data');
-      console.error('Main_View: World bounds were:', worldBounds);
-      console.error('Main_View: Visible channels:', channels.filter(c => c.visible !== false));
+    } catch (error) {
+      console.error('Main_View: Error in handleSelectionComplete:', error);
+      console.error('Main_View: Error stack:', error.stack);
     }
-  };
+  }, [channels, onSelectionChange, extractSelectedRegion]);
 
   // Setup Three.js scene
   useEffect(() => {
@@ -1078,7 +1089,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       }
       renderer.dispose();
     };
-  }, [handleMovement, renderScene, updateCameraPosition, updateChannelLOD]);
+  }, [handleMovement, renderScene, updateCameraPosition, updateChannelLOD, handleSelectionComplete]);
 
   useEffect(() => {
     const scene = sceneRef.current;
