@@ -2,7 +2,7 @@
 
 **Team Members:**
 - Hossein Fathollahian
-- Yugesh Spinidi
+- Yugesh Reddy Sappidi
 
 This is a React + Three.js test application with an interactive rotating cube for the Melanoma Tissue Volumes project.
 
