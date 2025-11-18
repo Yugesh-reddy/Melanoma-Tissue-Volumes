@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 """
-Load BiomedVis Challenge 2025 dataset - Your original code
+Load BiomedVis Challenge 2025 dataset - Load from local downloaded data
 """
 
 import dask.array as da
-from fsspec.core import url_to_fs
+import os
 
 def load_biomedvis_data():
-    """Load the dataset using your original method"""
+    """Load the dataset from locally downloaded files"""
     
     print("🚀 Loading BiomedVis Challenge 2025 dataset...")
     
-    # Your exact code
-    path = "https://lsp-public-data.s3.amazonaws.com/biomedvis-challenge-2025/Dataset1-LSP13626-melanoma-in-situ/0"
-    fs, path = url_to_fs(path)
-    store = fs.get_mapper(f"{path}/3")
-    daskArray = da.from_zarr(store)
+    # Load from local downloaded data
+    local_path = "./biomedvis-6gb/0/3"
+    
+    # Check if data exists
+    if not os.path.exists(local_path):
+        raise FileNotFoundError(f"Dataset not found at {local_path}. Please run download_dataset.py first.")
+    
+    # Load the zarr array from local path
+    daskArray = da.from_zarr(local_path)
     
     print("✅ Dataset loaded successfully!")
     print(f"📊 Shape: {daskArray.shape}")
     print(f"📊 Size: {daskArray.nbytes / (1024**3):.2f} GB")
     print(f"📊 Chunks: {daskArray.chunks}")
+    print(f"📊 Data type: {daskArray.dtype}")
     
     return daskArray
 

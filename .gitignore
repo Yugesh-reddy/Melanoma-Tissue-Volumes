@@ -3,7 +3,12 @@ node_modules/
 
 # Data folder (exclude from Git - too large)
 Data/
+
+# BiomedVis datasets (exclude from Git - too large)
+downloadData/biomedvis-24gb/
+downloadData/biomedvis-highres/
 biomedvis-high-res/
+
 # Build output
 dist/
 build/
@@ -17,4 +22,6 @@ visualization_data/
 # OS
 .DS_Store
 Thumbs.db
+node_modules/
+
 
