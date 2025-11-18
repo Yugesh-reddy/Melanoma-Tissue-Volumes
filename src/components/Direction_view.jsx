@@ -3,14 +3,6 @@ import * as THREE from 'three';
 
 const buildLoadPaths = (channelIndex) => [
   {
-    data: `./visualization_data/channel_${channelIndex}_napari_data.raw`,
-    metadata: `./visualization_data/channel_${channelIndex}_napari_metadata.json`
-  },
-  {
-    data: `visualization_data/channel_${channelIndex}_napari_data.raw`,
-    metadata: `visualization_data/channel_${channelIndex}_napari_metadata.json`
-  },
-  {
     data: `./visualization_data/channel_${channelIndex}_data.raw`,
     metadata: `./visualization_data/channel_${channelIndex}_metadata.json`
   },
