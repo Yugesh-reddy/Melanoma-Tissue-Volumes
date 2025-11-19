@@ -129,9 +129,22 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
             thresholdPassCount++;
             // Use EXACT same coordinate calculation as Main_View
             // This ensures 1:1 spatial position matching
+            // Fix Mirror Image: Invert X axis to match Main_View's coordinate system if needed
+            // Main_View typically maps 0..1 to -1..1.
             let nx = ((x / xSize) * 2 - 1) * scaleX;
             let ny = ((y / ySize) * 2 - 1) * scaleY;
             let nz = ((z / zSize) * 2 - 1) * scaleZ;
+
+            // Invert X to fix mirror image if Main_View is doing so, or if the camera is looking from behind
+            // For now, let's try flipping X based on user report
+            // nx = -nx; 
+            // Actually, let's check the camera position. The camera is at positive Z looking at origin.
+            // If the data is mirrored, it might be the data loading order or the axis mapping.
+            // Let's try inverting X to see if it matches Main_View.
+            // Wait, Main_View uses the same logic. If Local_View is mirrored, maybe the camera is on the wrong side?
+            // Camera is at +Z looking at 0,0,0.
+            // Let's try flipping the X coordinate in the mesh generation.
+            nx = -nx; // Flip X to fix mirror image
 
             // Apply center offset to center geometry at origin (0,0,0) without scaling
             // This maintains exact spatial relationships while centering the view
@@ -310,7 +323,8 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     // Use current channels (channelsOverride) as the source of truth
     // This ensures that any globally selected/visible channel is shown in the local view,
     // regardless of whether it was active when the region was originally selected.
-    let channelsToUse = channelsOverride || [];
+    // CRITICAL: Always prefer channelsOverride (live state) over selectedData.channels (stale state)
+    let channelsToUse = channelsOverride && channelsOverride.length > 0 ? channelsOverride : selectedData.channels;
 
     // If no current channels provided (shouldn't happen in normal flow), fallback to stored channels
     if (!channelsToUse || channelsToUse.length === 0) {
@@ -354,12 +368,20 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const scene = sceneRef.current;
 
     // Clear existing meshes
-    voxelMeshesRef.current.forEach(mesh => {
-      scene.remove(mesh);
-      if (mesh.geometry) mesh.geometry.dispose();
-      if (mesh.material) mesh.material.dispose();
-    });
+    // Clear existing meshes - ROBUST CLEANUP
+    // Iterate backwards to safely remove
+    for (let i = scene.children.length - 1; i >= 0; i--) {
+      const child = scene.children[i];
+      // Remove meshes and helpers, but keep lights
+      if (child.isMesh || child.isLineSegments || child.isAxesHelper) {
+        scene.remove(child);
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      }
+    }
     voxelMeshesRef.current = [];
+    boundingBoxRef.current = null;
+    axesHelperRef.current = null;
 
     // Remove existing bounding box
     if (boundingBoxRef.current) {
@@ -428,7 +450,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const boundsCenterZ = (bounds.min.z + bounds.max.z) / 2;
 
     const boxCenter = {
-      x: ((boundsCenterX / xSize) * 2 - 1) * scaleXData,
+      x: -((boundsCenterX / xSize) * 2 - 1) * scaleXData, // Flip X center too
       y: ((boundsCenterY / ySize) * 2 - 1) * scaleYData,
       z: ((boundsCenterZ / zSize) * 2 - 1) * scaleZData
     };
