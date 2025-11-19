@@ -307,29 +307,18 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       return;
     }
 
-    // Use current channels if provided, otherwise use stored channels
-    // When using current channels, match them by channelIndex to ensure we only show channels from the original selection
-    let channelsToUse = [];
+    // Use current channels (channelsOverride) as the source of truth
+    // This ensures that any globally selected/visible channel is shown in the local view,
+    // regardless of whether it was active when the region was originally selected.
+    let channelsToUse = channelsOverride || [];
 
-    if (channelsOverride && channelsOverride.length > 0 && selectedData.channels && selectedData.channels.length > 0) {
-      // Match current channels to selected channels by channelIndex
-      const selectedChannelIndices = new Set(selectedData.channels.map(c => c.channelIndex));
-      console.log('Local_View: Selected channel indices:', Array.from(selectedChannelIndices));
-      console.log('Local_View: Current channel indices:', channelsOverride.map(c => c.channelIndex));
-
-      channelsToUse = channelsOverride.filter(c => selectedChannelIndices.has(c.channelIndex));
-      console.log(`Local_View: Matched ${channelsToUse.length} current channel(s) to selection`);
-
-      // Fallback to stored channels if no matches
-      if (channelsToUse.length === 0) {
-        console.warn('Local_View: No current channels matched, using stored channels');
-        channelsToUse = selectedData.channels || [];
-      }
-    } else {
-      // Use stored channels if current channels not available
-      channelsToUse = channelsOverride || selectedData.channels || [];
-      console.log(`Local_View: Using ${channelsToUse.length} ${channelsOverride ? 'current' : 'stored'} channel(s)`);
+    // If no current channels provided (shouldn't happen in normal flow), fallback to stored channels
+    if (!channelsToUse || channelsToUse.length === 0) {
+      console.log('Local_View: No current channels provided, falling back to stored channels');
+      channelsToUse = selectedData.channels || [];
     }
+
+    console.log(`Local_View: Using ${channelsToUse.length} channel(s) for visualization`);
 
     if (channelsToUse.length === 0) {
       console.log('Local_View: No channels available');
@@ -388,15 +377,29 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
 
     const { bounds, scaling } = selectedData;
 
-    // Load first channel data to get metadata for bounding box calculation
-    const firstChannelConfig = visibleChannels[0];
-    const firstChannelData = await loadChannelData(firstChannelConfig.channelIndex);
-    if (!firstChannelData) {
-      console.log('Local_View: Failed to load first channel data');
+    // Find a reference channel with loaded data to calculate bounding box
+    let referenceChannelConfig = null;
+    let referenceData = null;
+
+    for (const channelConfig of visibleChannels) {
+      try {
+        const data = await loadChannelData(channelConfig.channelIndex);
+        if (data) {
+          referenceChannelConfig = channelConfig;
+          referenceData = data;
+          break; // Found a valid reference
+        }
+      } catch (err) {
+        console.warn(`Local_View: Failed to load channel ${channelConfig.channelIndex} for reference`, err);
+      }
+    }
+
+    if (!referenceData) {
+      console.warn('Local_View: Failed to load data for ANY visible channel - cannot create visualization');
       return;
     }
 
-    const { metadata: firstMetadata } = firstChannelData;
+    const { metadata: firstMetadata } = referenceData;
     const [zSize, ySize, xSize] = firstMetadata.shape;
 
     // Use scaling factors from Main_View if available to maintain exact 3D positions

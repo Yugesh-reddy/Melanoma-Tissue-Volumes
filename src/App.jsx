@@ -22,8 +22,10 @@ function App() {
   const lastAggregatedSignatureRef = useRef('');
 
   const [selectedRegionData, setSelectedRegionData] = useState(null);
+  const lastSelectionBoundsRef = useRef(null); // Persist selection bounds across region switches
 
   const handleChannelsChange = useCallback((updatedChannels) => {
+    console.log('App: Channels updated:', updatedChannels.length, 'channels');
     setChannels(updatedChannels);
   }, []);
 
@@ -34,12 +36,18 @@ function App() {
     console.log('App: Channels:', selectedData?.channels);
     console.log('App: Scaling:', selectedData?.scaling);
     console.log('App: Setting selectedRegionData state...');
-    
+
     if (!selectedData || !selectedData.bounds) {
       console.error('App: Invalid selection data received:', selectedData);
       return;
     }
-    
+
+    // Update persistent bounds
+    if (selectedData.worldBounds) {
+      lastSelectionBoundsRef.current = selectedData.worldBounds;
+      console.log('App: Updated persistent selection bounds');
+    }
+
     setSelectedRegionData(selectedData);
     console.log('App: ✓ selectedRegionData state updated');
   }, []);
@@ -71,6 +79,7 @@ function App() {
         nextRegions = prevRegions.filter((region) => region.id !== regionPayload.id);
       }
 
+      console.log('App: Region toggled. New regions count:', nextRegions.length);
       return nextRegions;
     });
   }, [buildAggregatedChannels]);
@@ -93,15 +102,15 @@ function App() {
   }, [aggregatedSignature, aggregatedRegionChannels]);
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      width: '100vw', 
-      height: '100vh', 
-      overflow: 'hidden', 
-      backgroundColor: '#000000', 
-      position: 'fixed', 
-      top: 0, 
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      width: '100vw',
+      height: '100vh',
+      overflow: 'hidden',
+      backgroundColor: '#000000',
+      position: 'fixed',
+      top: 0,
       left: 0,
       boxSizing: 'border-box'
     }}>
@@ -120,18 +129,18 @@ function App() {
         flexShrink: 0
       }}>
         {/* Left Sidebar - 100% of main content height, 25% width */}
-        <div style={{ 
-          width: '25%', 
-          height: '100%', 
-          display: 'flex', 
+        <div style={{
+          width: '25%',
+          height: '100%',
+          display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
           boxSizing: 'border-box',
           flexShrink: 0
         }}>
           {/* Channel Selection - 45% of sidebar height */}
-          <div style={{ 
-            height: '45%', 
+          <div style={{
+            height: '45%',
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
@@ -144,8 +153,8 @@ function App() {
             />
           </div>
           {/* Region Selection - 55% of sidebar height */}
-          <div style={{ 
-            height: '55%', 
+          <div style={{
+            height: '55%',
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
@@ -159,29 +168,34 @@ function App() {
         </div>
 
         {/* Right Section - 100% of main content height, 75% width */}
-        <div style={{ 
-          width: '75%', 
-          height: '100%', 
-          display: 'flex', 
+        <div style={{
+          width: '75%',
+          height: '100%',
+          display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
           boxSizing: 'border-box',
           flexShrink: 0
         }}>
           {/* Main View - 75% height */}
-          <div style={{ 
-            height: '70%', 
+          <div style={{
+            height: '70%',
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
             flexShrink: 0
           }}>
-            <Main_View channels={channels} activeRegions={selectedRegions} onSelectionChange={handleSelectionChange} />
+            <Main_View
+              channels={channels}
+              activeRegions={selectedRegions}
+              onSelectionChange={handleSelectionChange}
+              initialSelectionBounds={lastSelectionBoundsRef.current} // Pass persistent bounds
+            />
           </div>
 
           {/* Bottom panels - 30% height */}
-          <div style={{ 
-            height: '30%', 
+          <div style={{
+            height: '30%',
             width: '100%',
             display: 'flex',
             overflow: 'hidden',
@@ -189,8 +203,8 @@ function App() {
             flexShrink: 0
           }}>
             {/* Local View - 33.3% width */}
-            <div style={{ 
-              width: '33.3%', 
+            <div style={{
+              width: '33.3%',
               height: '100%',
               overflow: 'hidden',
               boxSizing: 'border-box',
@@ -199,8 +213,8 @@ function App() {
               <Local_View selectedRegionData={selectedRegionData} channels={channels} />
             </div>
             {/* Graph Panel - 33.3% width */}
-            <div style={{ 
-              width: '33.3%', 
+            <div style={{
+              width: '33.3%',
               height: '100%',
               overflow: 'hidden',
               boxSizing: 'border-box',
@@ -209,8 +223,8 @@ function App() {
               <Graph_Pannel selectedRegionData={selectedRegionData} channels={channels} />
             </div>
             {/* Direction View - 33.3% width */}
-            <div style={{ 
-              width: '33.3%', 
+            <div style={{
+              width: '33.3%',
               height: '100%',
               overflow: 'hidden',
               boxSizing: 'border-box',
