@@ -2,6 +2,13 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { loadChannelData } from '../hooks/useChannelData';
 
+const OPACITY_FLOOR = 0.35;
+const OPACITY_BOOST = 1.3;
+const EDGE_FEATHER = 0.99;
+const JITTER_SCALE = 0.1;
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
 const Local_View = ({ selectedRegionData, channels = [] }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
@@ -113,6 +120,16 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     let pointCount = 0;
     let thresholdPassCount = 0;
 
+    // CRITICAL: Calculate step sizes BEFORE the loop so they can be used for jitter
+    // Use EXACT same voxel step size calculation as Main_View
+    // This ensures 1:1 spatial scale matching - NO additional scaling!
+    const stepX = (2 / xSize) * scaleX * Math.max(1, voxelSampling);
+    const stepY = (2 / ySize) * scaleY * Math.max(1, voxelSampling);
+    const stepZ = (2 / zSize) * scaleZ * Math.max(1, voxelSampling);
+
+    console.log(`Local_View: Voxel step sizes (1:1 with Main_View): X=${stepX.toFixed(6)}, Y=${stepY.toFixed(6)}, Z=${stepZ.toFixed(6)}`);
+    console.log(`Local_View: Using sampling=${voxelSampling} (full resolution)`);
+
     for (let z = voxelMinZ; z <= voxelMaxZ; z += voxelSampling) {
       for (let y = voxelMinY; y <= voxelMaxY; y += voxelSampling) {
         for (let x = voxelMinX; x <= voxelMaxX; x += voxelSampling) {
@@ -129,37 +146,34 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
             thresholdPassCount++;
             // Use EXACT same coordinate calculation as Main_View
             // This ensures 1:1 spatial position matching
-            // Fix Mirror Image: Invert X axis to match Main_View's coordinate system if needed
-            // Main_View typically maps 0..1 to -1..1.
+            // Fix Mirror Image: Invert X axis to match Main_View's coordinate system
             let nx = ((x / xSize) * 2 - 1) * scaleX;
             let ny = ((y / ySize) * 2 - 1) * scaleY;
             let nz = ((z / zSize) * 2 - 1) * scaleZ;
 
-            // Invert X to fix mirror image if Main_View is doing so, or if the camera is looking from behind
-            // For now, let's try flipping X based on user report
-            // nx = -nx; 
-            // Actually, let's check the camera position. The camera is at positive Z looking at origin.
-            // If the data is mirrored, it might be the data loading order or the axis mapping.
-            // Let's try inverting X to see if it matches Main_View.
-            // Wait, Main_View uses the same logic. If Local_View is mirrored, maybe the camera is on the wrong side?
-            // Camera is at +Z looking at 0,0,0.
-            // Let's try flipping the X coordinate in the mesh generation.
             nx = -nx; // Flip X to fix mirror image
 
+            // Apply jitter to match Main_View visual style (reduces aliasing/moire)
+            const jitterX = (Math.random() - 0.5) * stepX * JITTER_SCALE;
+            const jitterY = (Math.random() - 0.5) * stepY * JITTER_SCALE;
+            const jitterZ = (Math.random() - 0.5) * stepZ * JITTER_SCALE;
+
             // Apply center offset to center geometry at origin (0,0,0) without scaling
-            // This maintains exact spatial relationships while centering the view
             if (centerOffset) {
               nx -= centerOffset.x;
               ny -= centerOffset.y;
               nz -= centerOffset.z;
             }
 
-            points.push(nx, ny, nz);
+            points.push(nx + jitterX, ny + jitterY, nz + jitterZ);
 
-            const pointOpacity = dataMax > 0 ? actualValue / dataMax : 0;
-            const boostedOpacity = Math.min(1, pointOpacity * opacityBoost);
-            const clampedOpacity = Math.max(baseOpacityFloor, boostedOpacity);
-            opacities.push(clampedOpacity);
+            // Match Main_View opacity calculation EXACTLY
+            const thresholdSpan = Math.max(1, maxThreshold - minThreshold);
+            const normalizedOpacity = (actualValue - minThreshold) / thresholdSpan;
+            const scaledOpacity = clamp(normalizedOpacity, 0, 1);
+            const finalOpacity = OPACITY_FLOOR + (1 - OPACITY_FLOOR) * scaledOpacity * OPACITY_BOOST;
+
+            opacities.push(clamp(finalOpacity, OPACITY_FLOOR, 1));
             pointCount++;
           }
         }
@@ -174,16 +188,10 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       return null;
     }
 
-    // CRITICAL: Use EXACT same voxel step size calculation as Main_View
-    // This ensures 1:1 spatial scale matching - NO additional scaling!
-    // Main_View uses: stepX = (2 / xSize) * scaleX * Math.max(1, sampling)
-    // voxelSampling is already declared above (always = 1 for full resolution)
-    const stepX = (2 / xSize) * scaleX * Math.max(1, voxelSampling);
-    const stepY = (2 / ySize) * scaleY * Math.max(1, voxelSampling);
-    const stepZ = (2 / zSize) * scaleZ * Math.max(1, voxelSampling);
-
-    console.log(`Local_View: Voxel step sizes (1:1 with Main_View): X=${stepX.toFixed(6)}, Y=${stepY.toFixed(6)}, Z=${stepZ.toFixed(6)}`);
-    console.log(`Local_View: Using sampling=${voxelSampling} (full resolution)`);
+    // Step sizes already calculated above
+    // const stepX = ...
+    // const stepY = ...
+    // const stepZ = ...
 
     const baseGeometry = new THREE.BoxGeometry(stepX, stepY, stepZ);
     const geometry = new THREE.InstancedBufferGeometry();
@@ -202,71 +210,44 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const voxelMaterial = new THREE.ShaderMaterial({
       uniforms: {
         color: { value: new THREE.Color(r, g, b) },
-        lightDirection: { value: new THREE.Vector3(0, 0, 1) },
-        ambientColor: { value: new THREE.Color(0.95, 0.95, 0.95) },
-        specularColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
-        shininess: { value: 1.0 },
-        brightness: { value: 2.0 },
-        opacityBoost: { value: opacityBoost },
-        edgeFeather: { value: 0.99 }
+        edgeFeather: { value: EDGE_FEATHER }
       },
       vertexShader: `
         attribute vec3 instanceOffset;
         attribute float instanceOpacity;
         varying float vOpacity;
-        varying vec3 vWorldPos;
-        varying vec3 vViewDir;
-        varying vec3 vNormal;
         varying vec3 vLocalPos;
         void main() {
           vOpacity = instanceOpacity;
           vec3 transformed = position + instanceOffset;
-          vNormal = normalize(normalMatrix * normal);
           vLocalPos = position;
-          vec4 worldPosition = modelMatrix * vec4(transformed, 1.0);
-          vWorldPos = worldPosition.xyz;
           vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-          vViewDir = normalize(-mvPosition.xyz);
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
       fragmentShader: `
         uniform vec3 color;
-        uniform float opacityBoost;
-        uniform vec3 lightDirection;
-        uniform vec3 ambientColor;
-        uniform vec3 specularColor;
-        uniform float shininess;
-        uniform float brightness;
         uniform float edgeFeather;
         varying float vOpacity;
-        varying vec3 vWorldPos;
-        varying vec3 vViewDir;
-        varying vec3 vNormal;
         varying vec3 vLocalPos;
         void main() {
-          vec3 normal = normalize(vNormal);
-          vec3 V = normalize(vViewDir);
-          vec3 L = normalize(V);
-          float diffuse = max(dot(normal, L), 0.0);
-          vec3 R = reflect(-L, normal);
-          float spec = pow(max(dot(R, V), 0.0), shininess);
-          float base = clamp(vOpacity * opacityBoost, 0.0, 1.0);
+          float base = clamp(vOpacity, 0.0, 1.0);
           float edge = max(max(abs(vLocalPos.x), abs(vLocalPos.y)), abs(vLocalPos.z));
           float edgeFade = smoothstep(0.5 - edgeFeather, 0.5, edge);
           base *= (1.0 - edgeFade);
-          vec3 baseColor = pow(color, vec3(0.55));
-          vec3 lighting = ambientColor + diffuse * baseColor + spec * specularColor;
-          vec3 finalColor = lighting * brightness;
-          float alpha = clamp(base, 0.0, 1.0);
-          if (alpha <= 0.01) discard;
-          gl_FragColor = vec4(finalColor * alpha, alpha);
+          if (base <= 0.01) discard;
+          
+          // Match Main_View color processing
+          vec3 finalColor = pow(color, vec3(0.55));
+          
+          // Additive blending expects pre-multiplied alpha
+          gl_FragColor = vec4(finalColor * base, base);
         }
       `,
       transparent: true,
-      depthWrite: true,
-      depthTest: true,
-      blending: THREE.NormalBlending
+      depthWrite: false, // Disable depth write for additive blending
+      depthTest: false,  // Disable depth test to see through volume
+      blending: THREE.AdditiveBlending
     });
 
     const mesh = new THREE.Mesh(geometry, voxelMaterial);
@@ -298,18 +279,9 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     cameraRef.current.lookAt(lookAtPoint);
   }, []);
 
-  // Update lighting based on camera direction - use useCallback
+  // Update lighting based on camera direction - NO OP for unlit shader
   const updateLighting = useCallback(() => {
-    const camera = cameraRef.current;
-    if (!camera) return;
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    voxelMeshesRef.current.forEach(mesh => {
-      const material = mesh?.material;
-      if (material && material.uniforms && material.uniforms.lightDirection) {
-        material.uniforms.lightDirection.value.copy(direction);
-      }
-    });
+    // No lighting to update
   }, []);
 
   // Create visualization from selected region data
