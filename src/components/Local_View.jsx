@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
+import { loadChannelData } from '../hooks/useChannelData';
 
 const Local_View = ({ selectedRegionData, channels = [] }) => {
   const mountRef = useRef(null);
@@ -10,67 +11,32 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
   const voxelMeshesRef = useRef([]);
   const boundingBoxRef = useRef(null);
   const axesHelperRef = useRef(null);
-  
+
   // State for UI display
   const [cellCount, setCellCount] = useState(0);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  
+
   // Debug: Log props changes
   useEffect(() => {
     console.log('Local_View: Props received - selectedRegionData:', selectedRegionData);
     console.log('Local_View: Props received - channels:', channels);
   }, [selectedRegionData, channels]);
-  
+
   // Camera state for local view (super zoomed)
   const cameraStateRef = useRef({
     rotation: { x: 0.5, y: 0.5 },
     distance: 0.3, // Much closer for super zoom
     panOffset: { x: 0, y: 0, z: 0 }
   });
-  
+
   // Store initial camera state for reset
   const initialCameraStateRef = useRef(null);
-  
+
   // Ref for debouncing channel updates
   const updateTimeoutRef = useRef(null);
 
-  // Load channel data (same as Main_View)
-  const loadChannelData = async (channelIndex) => {
-    const paths = [
-      { data: `./visualization_data/channel_${channelIndex}_napari_data.raw`, metadata: `./visualization_data/channel_${channelIndex}_napari_metadata.json` },
-      { data: `visualization_data/channel_${channelIndex}_napari_data.raw`, metadata: `visualization_data/channel_${channelIndex}_napari_metadata.json` },
-      { data: `./visualization_data/channel_${channelIndex}_data.raw`, metadata: `./visualization_data/channel_${channelIndex}_metadata.json` },
-      { data: `visualization_data/channel_${channelIndex}_data.raw`, metadata: `visualization_data/channel_${channelIndex}_metadata.json` }
-    ];
-
-    for (const path of paths) {
-      try {
-        let metadataResponse = await fetch(path.metadata);
-        if (!metadataResponse.ok) continue;
-        
-        const contentType = metadataResponse.headers.get('content-type');
-        if (contentType && !contentType.includes('application/json')) continue;
-        
-        const metadataText = await metadataResponse.text();
-        if (metadataText.trim().startsWith('<!DOCTYPE') || metadataText.trim().startsWith('<html')) continue;
-        
-        const metadata = JSON.parse(metadataText);
-        let dataResponse = await fetch(path.data);
-        if (!dataResponse.ok) continue;
-        
-        const dataContentType = dataResponse.headers.get('content-type');
-        if (dataContentType && dataContentType.includes('text/html')) continue;
-        
-        const arrayBuffer = await dataResponse.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        
-        return { data, metadata };
-      } catch (error) {
-        continue;
-      }
-    }
-    return null;
-  };
+  // Load channel data using utility
+  // Note: loadChannelData is now imported from hooks/useChannelData
 
   // Create voxel visualization for a channel region (similar to Main_View but for selected region)
   // Uses scaling factors from Main_View to maintain exact 3D positions
@@ -80,21 +46,21 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const { color, thresholdMin, thresholdMax } = channelConfig;
     const shape = metadata.shape;
     const [zSize, ySize, xSize] = shape;
-    
+
     console.log(`Local_View: Creating visualization for channel ${channelConfig.channelIndex}`);
     console.log(`Local_View: Shape: [${zSize}, ${ySize}, ${xSize}], Bounds:`, bounds);
-    
+
     const dataRange = metadata.dataRange || [0, 65535];
     const dataMin = dataRange[0];
     const dataMax = dataRange[1];
-    
+
     let minThreshold = thresholdMin !== undefined ? thresholdMin : dataMin;
     let maxThreshold = thresholdMax !== undefined ? thresholdMax : dataMax;
-    
+
     if (minThreshold > maxThreshold) {
       [minThreshold, maxThreshold] = [maxThreshold, minThreshold];
     }
-    
+
     minThreshold = Math.max(dataMin, Math.min(dataMax, minThreshold));
     maxThreshold = Math.max(dataMin, Math.min(dataMax, maxThreshold));
 
@@ -110,7 +76,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const opacities = [];
     const baseOpacityFloor = 0.35;
     const opacityBoost = 1.3;
-    
+
     // Use scaling factors from Main_View if provided, otherwise calculate them
     // This ensures exact 3D position matching between Main_View and Local_View
     let scaleX, scaleY, scaleZ;
@@ -155,7 +121,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
             console.warn(`Local_View: Index ${idx} out of bounds (data length: ${data.length})`);
             continue;
           }
-          
+
           const normalizedValue = data[idx];
           const actualValue = (normalizedValue / 255) * (dataMax - dataMin) + dataMin;
 
@@ -166,7 +132,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
             let nx = ((x / xSize) * 2 - 1) * scaleX;
             let ny = ((y / ySize) * 2 - 1) * scaleY;
             let nz = ((z / zSize) * 2 - 1) * scaleZ;
-            
+
             // Apply center offset to center geometry at origin (0,0,0) without scaling
             // This maintains exact spatial relationships while centering the view
             if (centerOffset) {
@@ -174,7 +140,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
               ny -= centerOffset.y;
               nz -= centerOffset.z;
             }
-            
+
             points.push(nx, ny, nz);
 
             const pointOpacity = dataMax > 0 ? actualValue / dataMax : 0;
@@ -202,7 +168,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const stepX = (2 / xSize) * scaleX * Math.max(1, voxelSampling);
     const stepY = (2 / ySize) * scaleY * Math.max(1, voxelSampling);
     const stepZ = (2 / zSize) * scaleZ * Math.max(1, voxelSampling);
-    
+
     console.log(`Local_View: Voxel step sizes (1:1 with Main_View): X=${stepX.toFixed(6)}, Y=${stepY.toFixed(6)}, Z=${stepZ.toFixed(6)}`);
     console.log(`Local_View: Using sampling=${voxelSampling} (full resolution)`);
 
@@ -293,7 +259,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const mesh = new THREE.Mesh(geometry, voxelMaterial);
     mesh.frustumCulled = false;
     mesh.userData = { channelIndex: channelConfig.channelIndex };
-    
+
     return mesh;
   };
 
@@ -344,16 +310,16 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     // Use current channels if provided, otherwise use stored channels
     // When using current channels, match them by channelIndex to ensure we only show channels from the original selection
     let channelsToUse = [];
-    
+
     if (channelsOverride && channelsOverride.length > 0 && selectedData.channels && selectedData.channels.length > 0) {
       // Match current channels to selected channels by channelIndex
       const selectedChannelIndices = new Set(selectedData.channels.map(c => c.channelIndex));
       console.log('Local_View: Selected channel indices:', Array.from(selectedChannelIndices));
       console.log('Local_View: Current channel indices:', channelsOverride.map(c => c.channelIndex));
-      
+
       channelsToUse = channelsOverride.filter(c => selectedChannelIndices.has(c.channelIndex));
       console.log(`Local_View: Matched ${channelsToUse.length} current channel(s) to selection`);
-      
+
       // Fallback to stored channels if no matches
       if (channelsToUse.length === 0) {
         console.warn('Local_View: No current channels matched, using stored channels');
@@ -364,7 +330,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       channelsToUse = channelsOverride || selectedData.channels || [];
       console.log(`Local_View: Using ${channelsToUse.length} ${channelsOverride ? 'current' : 'stored'} channel(s)`);
     }
-    
+
     if (channelsToUse.length === 0) {
       console.log('Local_View: No channels available');
       // Clear scene if no channels
@@ -397,7 +363,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     console.log(`Local_View: Using ${visibleChannels.length} visible channel(s) (${channelsOverride ? 'current' : 'stored'} channels)`);
 
     const scene = sceneRef.current;
-    
+
     // Clear existing meshes
     voxelMeshesRef.current.forEach(mesh => {
       scene.remove(mesh);
@@ -432,7 +398,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
 
     const { metadata: firstMetadata } = firstChannelData;
     const [zSize, ySize, xSize] = firstMetadata.shape;
-    
+
     // Use scaling factors from Main_View if available to maintain exact 3D positions
     let scaleXData, scaleYData, scaleZData;
     if (scaling) {
@@ -452,18 +418,18 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     const boundsWidth = bounds.max.x - bounds.min.x + 1;
     const boundsHeight = bounds.max.y - bounds.min.y + 1;
     const boundsDepth = bounds.max.z - bounds.min.z + 1;
-    
+
     // Calculate center in normalized coordinates (same as Main_View)
     const boundsCenterX = (bounds.min.x + bounds.max.x) / 2;
     const boundsCenterY = (bounds.min.y + bounds.max.y) / 2;
     const boundsCenterZ = (bounds.min.z + bounds.max.z) / 2;
-    
+
     const boxCenter = {
       x: ((boundsCenterX / xSize) * 2 - 1) * scaleXData,
       y: ((boundsCenterY / ySize) * 2 - 1) * scaleYData,
       z: ((boundsCenterZ / zSize) * 2 - 1) * scaleZData
     };
-    
+
     // Calculate bounding box size in normalized space (exact same calculation as Main_View)
     const boxSize = {
       x: (boundsWidth / xSize) * 2 * scaleXData,
@@ -487,7 +453,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     // Pass scaling factors to maintain exact 3D positions
     let meshCount = 0;
     let totalCellCount = 0;
-    
+
     // Calculate center offset BEFORE creating meshes so we can adjust positions
     // Use the same center calculation as boxCenter
     const centerOffset = {
@@ -495,9 +461,9 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       y: boxCenter.y,
       z: boxCenter.z
     };
-    
+
     console.log(`Local_View: Center offset to apply: (${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
-    
+
     console.log(`Local_View: Processing ${visibleChannels.length} visible channel(s)`);
     for (const channelConfig of visibleChannels) {
       try {
@@ -512,11 +478,11 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
         const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
         if (mesh) {
           console.log(`Local_View: Mesh created for channel ${channelConfig.channelIndex}, adding to scene...`);
-          
+
           // Ensure mesh is visible and properly configured
           mesh.visible = true;
           mesh.frustumCulled = false;
-          
+
           scene.add(mesh);
           voxelMeshesRef.current.push(mesh);
           meshCount++;
@@ -533,7 +499,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
         console.error(`Local_View: Error stack:`, error.stack);
       }
     }
-    
+
     // Store cell count for UI display
     setCellCount(totalCellCount);
 
@@ -551,67 +517,67 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     if (boundingBoxRef.current) {
       boundingBoxRef.current.position.set(0, 0, 0);
     }
-    
+
     if (axesHelperRef.current) {
       axesHelperRef.current.position.set(0, 0, 0);
     }
-    
+
     // Set camera to look at origin (where geometry is centered)
     cameraStateRef.current.panOffset = { x: 0, y: 0, z: 0 };
-    
+
     // Calculate camera distance based on ACTUAL cuboid dimensions (not auto-fit)
     // Use the maximum dimension of the bounding box to determine appropriate distance
     const maxDimension = Math.max(Math.abs(boxSize.x), Math.abs(boxSize.y), Math.abs(boxSize.z));
-    
+
     // Ensure we have a valid dimension
-    if (maxDimension > 0 && isFinite(maxDimension)) {
+    if (maxDimension > 0 && Number.isFinite(maxDimension)) {
       // Calculate camera distance to show the cuboid with appropriate padding
       // Formula: distance = (maxDimension / 2) / tan(fov/2) * paddingFactor
       const fovRad = (60 * Math.PI) / 180; // Camera FOV in radians
       const paddingFactor = 2.0; // Increased padding for better view
       const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
       cameraStateRef.current.distance = baseDistance * paddingFactor;
-      
+
       // Clamp distance to reasonable bounds
       cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, cameraStateRef.current.distance));
     } else {
       // Fallback to a reasonable default distance
-      console.warn('Local_View: Invalid maxDimension, using default camera distance');
+      // console.warn('Local_View: Invalid maxDimension, using default camera distance');
       cameraStateRef.current.distance = 0.5;
     }
-    
+
     // Reset camera rotation to a good viewing angle
     cameraStateRef.current.rotation = { x: 0.5, y: 0.5 };
-    
+
     console.log(`Local_View: Geometry centered at origin (offset: ${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
     console.log(`Local_View: Camera distance: ${cameraStateRef.current.distance.toFixed(4)} (based on max dimension: ${maxDimension.toFixed(4)})`);
-    
+
     // Store initial camera state for reset functionality
     initialCameraStateRef.current = {
       rotation: { ...cameraStateRef.current.rotation },
       distance: cameraStateRef.current.distance,
       panOffset: { ...cameraStateRef.current.panOffset }
     };
-    
+
     updateCameraPosition();
     updateLighting();
-    
+
     // Force multiple renders to ensure visualization is displayed immediately
     if (rendererRef.current && cameraRef.current && sceneRef.current) {
       // Update camera and lighting first
       updateCameraPosition();
       updateLighting();
-      
+
       // Render immediately
       rendererRef.current.render(sceneRef.current, cameraRef.current);
-      
+
       // Also render on next frame to ensure it's visible
       requestAnimationFrame(() => {
         if (rendererRef.current && cameraRef.current && sceneRef.current) {
           updateCameraPosition();
           updateLighting();
           rendererRef.current.render(sceneRef.current, cameraRef.current);
-          
+
           // One more render after a short delay to ensure everything is displayed
           setTimeout(() => {
             if (rendererRef.current && cameraRef.current && sceneRef.current) {
@@ -621,19 +587,19 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
         }
       });
     }
-    
+
     console.log('Local_View: Camera positioned at distance', cameraStateRef.current.distance, 'looking at', boxCenter);
     console.log(`Local_View: Visualization complete - ${meshCount} meshes added to scene, ${totalCellCount} total cells`);
     console.log(`Local_View: Scene children count: ${sceneRef.current.children.length}`);
     console.log(`Local_View: Voxel meshes count: ${voxelMeshesRef.current.length}`);
     console.log(`Local_View: Renderer exists:`, !!rendererRef.current);
     console.log(`Local_View: Camera exists:`, !!cameraRef.current);
-    
+
     // Log mesh details for debugging
     voxelMeshesRef.current.forEach((mesh, idx) => {
       console.log(`Local_View: Mesh ${idx}: visible=${mesh.visible}, position=`, mesh.position, `instances=${mesh.geometry.instanceCount}, inScene=${sceneRef.current.children.includes(mesh)}`);
     });
-    
+
     // Verify renderer is working
     if (rendererRef.current && rendererRef.current.domElement) {
       console.log(`Local_View: Renderer canvas size: ${rendererRef.current.domElement.width}x${rendererRef.current.domElement.height}`);
@@ -659,7 +625,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     updateCameraPosition();
 
     // Renderer
-    const renderer = new THREE.WebGLRenderer({ 
+    const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
       powerPreference: "high-performance"
@@ -670,7 +636,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     if (renderer.outputEncoding !== undefined) {
       renderer.outputEncoding = THREE.sRGBEncoding;
     }
-    
+
     // Ensure canvas is visible and properly styled
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100%';
@@ -678,10 +644,10 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     renderer.domElement.style.position = 'absolute';
     renderer.domElement.style.top = '0';
     renderer.domElement.style.left = '0';
-    
+
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
-    
+
     console.log('Local_View: Renderer initialized, canvas size:', width, 'x', height);
     console.log('Local_View: Canvas element:', renderer.domElement);
     console.log('Local_View: Canvas visible:', renderer.domElement.offsetWidth > 0 && renderer.domElement.offsetHeight > 0);
@@ -747,13 +713,13 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       animationRef.current = requestAnimationFrame(animate);
     };
     animate();
-    
+
     // Initial render to ensure something is displayed
     console.log('Local_View: Scene initialized, rendering initial frame');
     console.log('Local_View: Scene children:', scene.children.length);
     console.log('Local_View: Camera position:', camera.position);
     console.log('Local_View: Camera distance:', cameraStateRef.current.distance);
-    
+
     if (cameraRef.current && sceneRef.current && rendererRef.current) {
       try {
         updateCameraPosition();
@@ -785,23 +751,23 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
-      
+
       // Clean up meshes
       voxelMeshesRef.current.forEach(mesh => {
         if (mesh.geometry) mesh.geometry.dispose();
         if (mesh.material) mesh.material.dispose();
       });
       voxelMeshesRef.current = [];
-      
+
       if (boundingBoxRef.current) {
         if (boundingBoxRef.current.geometry) boundingBoxRef.current.geometry.dispose();
         if (boundingBoxRef.current.material) boundingBoxRef.current.material.dispose();
       }
-      
+
       if (container && renderer.domElement) {
         container.removeChild(renderer.domElement);
       }
-      
+
       // Clear refs
       sceneRef.current = null;
       cameraRef.current = null;
@@ -837,16 +803,16 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     // Current channels have the latest filter settings that match Main_View
     // Match current channels to selected channels by channelIndex to ensure we only show channels from the original selection
     let channelsToUse = [];
-    
+
     if (channels && channels.length > 0 && selectedRegionData.channels && selectedRegionData.channels.length > 0) {
       // Match current channels to selected channels by channelIndex
       const selectedChannelIndices = new Set(selectedRegionData.channels.map(c => c.channelIndex));
       console.log('Local_View: Selected channel indices:', Array.from(selectedChannelIndices));
       console.log('Local_View: Current channel indices:', channels.map(c => c.channelIndex));
-      
+
       channelsToUse = channels.filter(c => selectedChannelIndices.has(c.channelIndex));
       console.log(`Local_View: Matched ${channelsToUse.length} current channel(s) to selection`);
-      
+
       // Fallback to stored channels if no matches
       if (channelsToUse.length === 0) {
         console.warn('Local_View: No current channels matched, using stored channels');
@@ -857,7 +823,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       channelsToUse = (channels && channels.length > 0) ? channels : (selectedRegionData.channels || []);
       console.log(`Local_View: Using ${channelsToUse.length} ${(channels && channels.length > 0) ? 'current' : 'stored'} channel(s)`);
     }
-    
+
     if (!channelsToUse || channelsToUse.length === 0) {
       console.log('Local_View: No channels available, waiting...');
       return;
@@ -867,7 +833,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
     console.log(`Local_View: Using ${channelsToUse.length} channel(s) - ${(channels && channels.length > 0) ? 'current' : 'stored'}`);
     console.log('Local_View: SelectedRegionData:', selectedRegionData);
     console.log('Local_View: Channels:', channelsToUse);
-    
+
     // Retry mechanism if scene isn't ready yet
     const tryCreateVisualization = (retries = 10) => {
       if (!sceneRef.current || !rendererRef.current || !cameraRef.current) {
@@ -880,19 +846,19 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           return;
         }
       }
-      
+
       console.log('Local_View: Creating visualization now...');
       createLocalVisualization(selectedRegionData, channelsToUse).catch(error => {
         console.error('Local_View: Error creating visualization:', error);
         console.error('Local_View: Error stack:', error.stack);
       });
     };
-    
+
     // Small delay to ensure state is settled, then try to create visualization
     updateTimeoutRef.current = setTimeout(() => {
       tryCreateVisualization();
     }, 100);
-    
+
     // Cleanup timeout on unmount or when dependencies change
     return () => {
       if (updateTimeoutRef.current) {
@@ -942,14 +908,14 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           button.style.backgroundColor = '#555';
         }, 150);
       }
-      
+
       // Reset camera state
       cameraStateRef.current.rotation = { ...initialCameraStateRef.current.rotation };
       cameraStateRef.current.distance = initialCameraStateRef.current.distance;
       cameraStateRef.current.panOffset = { ...initialCameraStateRef.current.panOffset };
       updateCameraPosition();
       updateLighting();
-      
+
       console.log('Local_View: Camera reset to initial position');
     }
   };
@@ -957,19 +923,19 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
   // Calculate section depth and volume from selected region data
   const getSectionInfo = () => {
     if (!selectedRegionData || !selectedRegionData.bounds) return null;
-    
+
     const bounds = selectedRegionData.bounds;
     const widthVoxels = bounds.max.x - bounds.min.x + 1;
     const heightVoxels = bounds.max.y - bounds.min.y + 1;
     const depthVoxels = bounds.max.z - bounds.min.z + 1;
-    
+
     // Estimate physical size (assuming 1 µm per voxel, adjust based on your data)
     const voxelSize = 1; // µm per voxel (adjust as needed)
     const widthMicrons = widthVoxels * voxelSize;
     const heightMicrons = heightVoxels * voxelSize;
     const depthMicrons = depthVoxels * voxelSize;
     const volumeMicrons3 = widthMicrons * heightMicrons * depthMicrons;
-    
+
     return {
       width: Math.round(widthMicrons),
       height: Math.round(heightMicrons),
@@ -994,10 +960,10 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
       overflow: 'hidden',
       position: 'relative'
     }}>
-      <h3 style={{ 
-        marginTop: 0, 
-        marginBottom: '5px', 
-        fontSize: '14px', 
+      <h3 style={{
+        marginTop: 0,
+        marginBottom: '5px',
+        fontSize: '14px',
         color: 'white',
         position: 'absolute',
         top: '5px',
@@ -1045,7 +1011,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           </button>
         )}
       </h3>
-      
+
       {/* Placeholder when no selection */}
       {!selectedRegionData && (
         <div style={{
@@ -1063,10 +1029,10 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
         </div>
       )}
-      
+
       {/* Info Modal */}
       {selectedRegionData && sectionInfo && showInfoModal && (
-        <div 
+        <div
           id="info-modal"
           style={{
             position: 'absolute',
@@ -1084,9 +1050,9 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ 
-            fontWeight: 'bold', 
-            marginBottom: '8px', 
+          <div style={{
+            fontWeight: 'bold',
+            marginBottom: '8px',
             fontSize: '13px',
             color: '#fff',
             borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
@@ -1120,7 +1086,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           </div>
         </div>
       )}
-      
+
       {/* Reset View Button */}
       {selectedRegionData && (
         <button
@@ -1153,7 +1119,7 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           Reset View
         </button>
       )}
-      
+
       {/* Scale Bar */}
       <div style={{
         position: 'absolute',
@@ -1177,16 +1143,16 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           10 µm
         </div>
       </div>
-      
-      <div 
-        ref={mountRef} 
+
+      <div
+        ref={mountRef}
         style={{
           width: '100%',
           height: '100%',
           position: 'absolute',
           top: 0,
           left: 0
-        }} 
+        }}
       />
     </div>
   );
