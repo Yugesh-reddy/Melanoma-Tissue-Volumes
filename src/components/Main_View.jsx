@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass';
+import { loadChannelData } from '../hooks/useChannelData';
 
 const CAMERA_INITIAL_STATE = {
   rotation: { x: 0, y: Math.PI },
@@ -88,7 +89,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   const isSelectingRef = useRef(false);
   const selectionEndRef = useRef(null);
   const isTogglingRef = useRef(false);
-  
+
   // 3D Cuboid selection state
   const [selectionMode, setSelectionMode] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
@@ -97,16 +98,16 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   const [cuboidDepth, setCuboidDepth] = useState(0.1); // Z-depth in normalized coordinates
   const [cuboidCenter, setCuboidCenter] = useState(null);
   const [cuboidSize, setCuboidSize] = useState(null);
-  
+
   // Sync refs with state
   useEffect(() => {
     selectionModeRef.current = selectionMode;
   }, [selectionMode]);
-  
+
   useEffect(() => {
     isSelectingRef.current = isSelecting;
   }, [isSelecting]);
-  
+
   useEffect(() => {
     selectionEndRef.current = selectionEnd;
   }, [selectionEnd]);
@@ -119,42 +120,6 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     if (distance >= 3.5) return 3;
     if (distance >= 2) return 2;
     return 1;
-  }, []);
-
-  const loadChannelData = useCallback(async (channelIndex) => {
-    for (const path of buildLoadPaths(channelIndex)) {
-      try {
-        const metadataResponse = await fetch(path.metadata);
-        if (!metadataResponse.ok) continue;
-
-        const contentType = metadataResponse.headers.get('content-type');
-        if (contentType && !contentType.includes('application/json')) continue;
-
-        const metadataText = await metadataResponse.text();
-        if (metadataText.trim().startsWith('<!DOCTYPE') || metadataText.trim().startsWith('<html')) continue;
-
-        const metadata = JSON.parse(metadataText);
-
-        const dataResponse = await fetch(path.data);
-        if (!dataResponse.ok) continue;
-
-        const dataContentType = dataResponse.headers.get('content-type');
-        if (dataContentType && dataContentType.includes('text/html')) continue;
-
-        const arrayBuffer = await dataResponse.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-
-        console.log(`Channel ${channelIndex}: Successfully loaded from ${path.data}`);
-        return { data, metadata };
-      } catch (error) {
-        if (!error.message.includes('Unexpected token') && !error.message.includes('JSON')) {
-          console.log(`Channel ${channelIndex}: Error trying ${path.data}:`, error.message);
-        }
-      }
-    }
-
-    console.warn(`Channel ${channelIndex}: Could not find data file in expected locations`);
-    return null;
   }, []);
 
   const createChannelVisualization = useCallback((channelData, channelConfig, samplingOverride) => {
@@ -475,23 +440,23 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   // Get 3D world bounds from screen selection box (for XY plane)
   const getWorldBoundsFromSelection = (startX, startY, endX, endY, zDepth = 0) => {
     if (!cameraRef.current || !rendererRef.current) return null;
-    
+
     const rect = rendererRef.current.domElement.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
-    
+
     // Convert to NDC
     const startNDC = screenToNDC(startX - rect.left, startY - rect.top, width, height);
     const endNDC = screenToNDC(endX - rect.left, endY - rect.top, width, height);
-    
+
     // Create raycaster to get world positions
     const raycaster = new THREE.Raycaster();
     const camera = cameraRef.current;
-    
+
     // Get corners of selection box in world space
     // Use a plane at z=zDepth to intersect
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zDepth);
-    
+
     // Calculate world positions for corners
     const corners = [
       new THREE.Vector2(startNDC.x, startNDC.y),
@@ -499,7 +464,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       new THREE.Vector2(endNDC.x, endNDC.y),
       new THREE.Vector2(startNDC.x, endNDC.y)
     ];
-    
+
     const worldPositions = [];
     corners.forEach(ndc => {
       raycaster.setFromCamera(ndc, camera);
@@ -507,20 +472,20 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       raycaster.ray.intersectPlane(plane, intersection);
       worldPositions.push(intersection);
     });
-    
+
     if (worldPositions.length === 0) return null;
-    
+
     // Calculate bounding box
     const minX = Math.min(...worldPositions.map(p => p.x));
     const maxX = Math.max(...worldPositions.map(p => p.x));
     const minY = Math.min(...worldPositions.map(p => p.y));
     const maxY = Math.max(...worldPositions.map(p => p.y));
-    
+
     // Calculate Z bounds based on depth
     const zHalfDepth = Math.abs(zDepth) / 2;
     const minZ = -zHalfDepth;
     const maxZ = zHalfDepth;
-    
+
     return {
       min: new THREE.Vector3(minX, minY, minZ),
       max: new THREE.Vector3(maxX, maxY, maxZ),
@@ -536,12 +501,12 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
         console.warn('Main_View: Cannot update wireframe - scene or bounds missing');
         return;
       }
-      
+
       if (!worldBounds.size || !worldBounds.center) {
         console.warn('Main_View: Invalid worldBounds structure:', worldBounds);
         return;
       }
-      
+
       // Remove existing wireframe
       if (cuboidWireframeRef.current) {
         try {
@@ -559,54 +524,54 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
         }
         cuboidWireframeRef.current = null;
       }
-      
+
       // Create new wireframe cuboid
       const size = worldBounds.size;
       const center = worldBounds.center;
-      
+
       // Validate size values
-      if (!size.x || !size.y || !size.z || 
-          isNaN(size.x) || isNaN(size.y) || isNaN(size.z) ||
-          !isFinite(size.x) || !isFinite(size.y) || !isFinite(size.z) ||
-          size.x <= 0 || size.y <= 0 || size.z <= 0) {
+      if (!size.x || !size.y || !size.z ||
+        isNaN(size.x) || isNaN(size.y) || isNaN(size.z) ||
+        !isFinite(size.x) || !isFinite(size.y) || !isFinite(size.z) ||
+        size.x <= 0 || size.y <= 0 || size.z <= 0) {
         console.warn('Main_View: Invalid size values:', size);
         return;
       }
-      
+
       // Ensure minimum size
       const minSize = 0.001;
       const safeSizeX = Math.max(minSize, Math.abs(size.x));
       const safeSizeY = Math.max(minSize, Math.abs(size.y));
       const safeSizeZ = Math.max(minSize, Math.abs(size.z));
-      
+
       const boxGeometry = new THREE.BoxGeometry(safeSizeX, safeSizeY, safeSizeZ);
       const boxEdges = new THREE.EdgesGeometry(boxGeometry);
-      const boxMaterial = new THREE.LineBasicMaterial({ 
-        color: 0x00ff00, 
+      const boxMaterial = new THREE.LineBasicMaterial({
+        color: 0x00ff00,
         linewidth: 2,
         transparent: true,
         opacity: 0.8
       });
       const wireframe = new THREE.LineSegments(boxEdges, boxMaterial);
-      
+
       // Validate center values
       if (center && !isNaN(center.x) && !isNaN(center.y) && !isNaN(center.z)) {
         wireframe.position.copy(center);
       } else {
         wireframe.position.set(0, 0, 0);
       }
-      
+
       sceneRef.current.add(wireframe);
       cuboidWireframeRef.current = wireframe;
-      
+
       // Store cuboid info
       cuboidRef.current = {
         center: center ? center.clone() : new THREE.Vector3(0, 0, 0),
         size: size.clone(),
-        min: worldBounds.min ? worldBounds.min.clone() : new THREE.Vector3(-safeSizeX/2, -safeSizeY/2, -safeSizeZ/2),
-        max: worldBounds.max ? worldBounds.max.clone() : new THREE.Vector3(safeSizeX/2, safeSizeY/2, safeSizeZ/2)
+        min: worldBounds.min ? worldBounds.min.clone() : new THREE.Vector3(-safeSizeX / 2, -safeSizeY / 2, -safeSizeZ / 2),
+        max: worldBounds.max ? worldBounds.max.clone() : new THREE.Vector3(safeSizeX / 2, safeSizeY / 2, safeSizeZ / 2)
       };
-      
+
       boxGeometry.dispose();
     } catch (err) {
       console.error('Main_View: Error in updateCuboidWireframe:', err);
@@ -620,24 +585,24 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       console.warn('Main_View: extractSelectedRegion - Invalid world bounds:', worldBounds);
       return null;
     }
-    
+
     const selectedData = {
       channels: [],
       bounds: null,
       worldBounds: worldBounds // Store world bounds for reference
     };
-    
+
     // Get first channel metadata to calculate voxel bounds
     const visibleChannels = channels.filter(c => c.visible !== false);
     if (visibleChannels.length === 0) {
       console.warn('Main_View: extractSelectedRegion - No visible channels');
       return null;
     }
-    
+
     const firstChannel = visibleChannels[0];
     const channelData = channelDataCacheRef.current.get(firstChannel.channelIndex);
     if (!channelData) return null;
-    
+
     const { metadata } = channelData;
     const shape = metadata.shape;
     const [zSize, ySize, xSize] = shape;
@@ -645,7 +610,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     const scaleX = xSize / maxDim;
     const scaleY = ySize / maxDim;
     const scaleZ = (zSize / maxDim) / 4; // Z compression factor
-    
+
     // Convert world bounds to voxel coordinates
     // World coordinates are in normalized [-1, 1] space
     let voxelMinX = Math.max(0, Math.floor(((worldBounds.min.x / scaleX + 1) / 2) * xSize));
@@ -654,22 +619,22 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     let voxelMaxY = Math.min(ySize - 1, Math.ceil(((worldBounds.max.y / scaleY + 1) / 2) * ySize));
     let voxelMinZ = Math.max(0, Math.floor(((worldBounds.min.z / scaleZ + 1) / 2) * zSize));
     let voxelMaxZ = Math.min(zSize - 1, Math.ceil(((worldBounds.max.z / scaleZ + 1) / 2) * zSize));
-    
+
     // Ensure min <= max (swap if needed)
     if (voxelMinX > voxelMaxX) [voxelMinX, voxelMaxX] = [voxelMaxX, voxelMinX];
     if (voxelMinY > voxelMaxY) [voxelMinY, voxelMaxY] = [voxelMaxY, voxelMinY];
     if (voxelMinZ > voxelMaxZ) [voxelMinZ, voxelMaxZ] = [voxelMaxZ, voxelMinZ];
-    
+
     // Ensure minimum size (at least 1 voxel in each dimension)
     if (voxelMaxX === voxelMinX) voxelMaxX = Math.min(xSize - 1, voxelMinX + 1);
     if (voxelMaxY === voxelMinY) voxelMaxY = Math.min(ySize - 1, voxelMinY + 1);
     if (voxelMaxZ === voxelMinZ) voxelMaxZ = Math.min(zSize - 1, voxelMinZ + 1);
-    
+
     selectedData.bounds = {
       min: { x: voxelMinX, y: voxelMinY, z: voxelMinZ },
       max: { x: voxelMaxX, y: voxelMaxY, z: voxelMaxZ }
     };
-    
+
     // Store scaling factors for Local_View to maintain 3D positions
     selectedData.scaling = {
       scaleX,
@@ -679,10 +644,10 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       ySize,
       zSize
     };
-    
+
     console.log(`Main_View: Calculated voxel bounds: X[${voxelMinX}, ${voxelMaxX}], Y[${voxelMinY}, ${voxelMaxY}], Z[${voxelMinZ}, ${voxelMaxZ}]`);
     console.log(`Main_View: Bounds size: ${voxelMaxX - voxelMinX + 1} x ${voxelMaxY - voxelMinY + 1} x ${voxelMaxZ - voxelMinZ + 1} voxels`);
-    
+
     // Add all visible channels
     visibleChannels.forEach(channelConfig => {
       selectedData.channels.push({
@@ -693,9 +658,9 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
         opacity: channelConfig.opacity
       });
     });
-    
+
     console.log(`Main_View: Added ${selectedData.channels.length} channels to selection`);
-    
+
     return selectedData;
   }, [channels]);
 
@@ -705,7 +670,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       console.warn('Main_View: Invalid world bounds');
       return;
     }
-    
+
     console.log('Main_View: ===== SELECTION COMPLETED =====');
     console.log('Main_View: 3D Cuboid selection completed');
     console.log('Main_View: World bounds:', worldBounds);
@@ -713,7 +678,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     console.log('Main_View: Cuboid size:', worldBounds.size);
     console.log('Main_View: Current channels:', channels);
     console.log('Main_View: onSelectionChange callback exists:', !!onSelectionChange);
-    
+
     try {
       const selectedData = await extractSelectedRegion(worldBounds);
       if (selectedData) {
@@ -722,13 +687,11 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
         console.log('Main_View: Channels count:', selectedData.channels.length);
         console.log('Main_View: Channels:', selectedData.channels);
         console.log('Main_View: Scaling factors:', selectedData.scaling);
-        
+
         if (onSelectionChange) {
-          console.log('Main_View: Calling onSelectionChange callback...');
           onSelectionChange(selectedData);
-          console.log('Main_View: ✓ onSelectionChange called successfully');
         } else {
-          console.error('Main_View: ✗ onSelectionChange callback is NULL!');
+          console.warn('Main_View: onSelectionChange prop is missing');
         }
       } else {
         console.error('Main_View: ✗ Failed to extract selected region data');
@@ -835,7 +798,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
           setSelectionEnd(selectionStartPos);
           currentCuboidDepth = cuboidDepth;
           console.log('Main_View: Selection started at:', selectionStartPos, 'depth:', currentCuboidDepth);
-          
+
           // Clear previous cuboid
           if (cuboidWireframeRef.current && sceneRef.current) {
             try {
@@ -865,25 +828,25 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
           // Complete 3D cuboid selection
           const endX = e.clientX;
           const endY = e.clientY;
-          
+
           console.log('Main_View: Selection completed - start:', selectionStartPos, 'end:', { x: endX, y: endY }, 'depth:', currentCuboidDepth);
-          
+
           // Get final world bounds with current depth
           const worldBounds = getWorldBoundsFromSelection(
-            selectionStartPos.x, 
-            selectionStartPos.y, 
-            endX, 
-            endY, 
+            selectionStartPos.x,
+            selectionStartPos.y,
+            endX,
+            endY,
             currentCuboidDepth
           );
-          
+
           console.log('Main_View: World bounds from selection:', worldBounds);
-          
+
           if (worldBounds) {
             try {
               // Keep wireframe visible
               updateCuboidWireframe(worldBounds);
-              
+
               // Extract and send selection data
               console.log('Main_View: Calling handleSelectionComplete...');
               handleSelectionComplete(worldBounds).catch(err => {
@@ -895,7 +858,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
           } else {
             console.warn('Main_View: No world bounds calculated from selection');
           }
-          
+
           setIsSelecting(false);
           setSelectionStart(null);
           setSelectionEnd(null);
@@ -917,7 +880,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
         if (selectionModeRef.current && selectionStartPos) {
           // Update 3D cuboid selection box
           setSelectionEnd({ x: e.clientX, y: e.clientY });
-          
+
           // Update wireframe in real-time
           const worldBounds = getWorldBoundsFromSelection(
             selectionStartPos.x,
@@ -926,7 +889,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
             e.clientY,
             currentCuboidDepth
           );
-          
+
           if (worldBounds) {
             try {
               updateCuboidWireframe(worldBounds);
@@ -965,7 +928,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
           const depthDelta = e.deltaY * 0.0001;
           currentCuboidDepth = Math.max(0.01, Math.min(1.0, currentCuboidDepth + depthDelta));
           setCuboidDepth(currentCuboidDepth);
-          
+
           // Update wireframe with new depth
           const endPos = selectionEndRef.current || selectionStartPos;
           const worldBounds = getWorldBoundsFromSelection(
@@ -975,7 +938,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
             endPos.y || selectionStartPos.y,
             currentCuboidDepth
           );
-          
+
           if (worldBounds) {
             try {
               updateCuboidWireframe(worldBounds);
@@ -1125,7 +1088,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     let needsRender = false;
     loadedChannels.forEach((entry, channelIndex) => {
       const channelConfig = channelConfigMap.get(channelIndex);
-      
+
       if (!channelConfig) {
         // Channel completely removed from list - dispose everything
         const mesh = entry?.mesh;
@@ -1280,47 +1243,47 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   const getCuboidDimensions = () => {
     try {
       if (!cuboidSize || !cuboidRef.current) return null;
-      
+
       // Get first channel metadata for voxel-to-μm conversion
       const visibleChannels = channels.filter(c => c.visible !== false);
       if (visibleChannels.length === 0) return null;
-      
+
       const firstChannel = visibleChannels[0];
       const channelData = channelDataCacheRef.current.get(firstChannel.channelIndex);
       if (!channelData) return null;
-      
+
       const { metadata } = channelData;
       const [zSize, ySize, xSize] = metadata.shape;
-      
+
       // Calculate voxel dimensions from world bounds
       // Convert world bounds back to voxel coordinates
       const maxDim = Math.max(zSize, ySize, xSize);
       const scaleX = xSize / maxDim;
       const scaleY = ySize / maxDim;
       const scaleZ = (zSize / maxDim) / 4;
-      
+
       // Convert world bounds to voxel coordinates
       const worldMin = cuboidRef.current.min;
       const worldMax = cuboidRef.current.max;
-      
+
       if (!worldMin || !worldMax) return null;
-      
+
       let voxelMinX = Math.max(0, Math.floor(((worldMin.x / scaleX + 1) / 2) * xSize));
       let voxelMaxX = Math.min(xSize - 1, Math.ceil(((worldMax.x / scaleX + 1) / 2) * xSize));
       let voxelMinY = Math.max(0, Math.floor(((worldMin.y / scaleY + 1) / 2) * ySize));
       let voxelMaxY = Math.min(ySize - 1, Math.ceil(((worldMax.y / scaleY + 1) / 2) * ySize));
       let voxelMinZ = Math.max(0, Math.floor(((worldMin.z / scaleZ + 1) / 2) * zSize));
       let voxelMaxZ = Math.min(zSize - 1, Math.ceil(((worldMax.z / scaleZ + 1) / 2) * zSize));
-      
+
       // Ensure min <= max
       if (voxelMinX > voxelMaxX) [voxelMinX, voxelMaxX] = [voxelMaxX, voxelMinX];
       if (voxelMinY > voxelMaxY) [voxelMinY, voxelMaxY] = [voxelMaxY, voxelMinY];
       if (voxelMinZ > voxelMaxZ) [voxelMinZ, voxelMaxZ] = [voxelMaxZ, voxelMinZ];
-      
+
       const voxelWidth = voxelMaxX - voxelMinX + 1;
       const voxelHeight = voxelMaxY - voxelMinY + 1;
       const voxelDepth = voxelMaxZ - voxelMinZ + 1;
-      
+
       // Convert to micrometers (assuming 1 voxel = 1 μm, adjust if needed)
       const voxelSize = 1; // μm per voxel
       return {
@@ -1338,43 +1301,43 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   const cuboidDimensions = getCuboidDimensions();
 
   return (
-    <div style={{ 
-      height: '100%', 
-      width: '100%', 
-      position: 'relative', 
+    <div style={{
+      height: '100%',
+      width: '100%',
+      position: 'relative',
       backgroundColor: '#000000',
       overflow: 'hidden',
       boxSizing: 'border-box'
     }}>
-      <div ref={mountRef} style={{ 
-        width: '100%', 
-        height: '100%', 
-        position: 'absolute', 
-        top: 0, 
+      <div ref={mountRef} style={{
+        width: '100%',
+        height: '100%',
+        position: 'absolute',
+        top: 0,
         left: 0,
         overflow: 'hidden'
       }} />
-      
+
       {/* Selection Mode Toggle Button */}
       <button
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          
+
           // Prevent rapid clicking
           if (isTogglingRef.current) {
             console.log('Main_View: Toggle already in progress, ignoring click');
             return;
           }
-          
+
           try {
             isTogglingRef.current = true;
             const newMode = !selectionMode;
             console.log('Main_View: Selection mode toggled:', newMode);
-            
+
             // Update state immediately
             setSelectionMode(newMode);
-            
+
             // Clear cuboid when disabling selection (defer to avoid render issues)
             if (!newMode && cuboidWireframeRef.current && sceneRef.current) {
               requestAnimationFrame(() => {
@@ -1434,7 +1397,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       >
         {selectionMode ? '✓ 3D Selection' : '3D Selection'}
       </button>
-      
+
       {/* Cuboid Dimensions Display */}
       {selectionMode && cuboidDimensions && (
         <div style={{
@@ -1466,7 +1429,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
           )}
         </div>
       )}
-      
+
       {/* Active Regions HUD */}
       {activeRegions.length > 0 && (
         <div

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
+import { loadChannelData } from '../hooks/useChannelData';
 
 const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
   const svgRef = useRef(null);
@@ -10,48 +11,13 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
   const [error, setError] = useState(null);
   const chartRef = useRef(null);
 
-  // Load channel data (same as Local_View)
-  const loadChannelData = useCallback(async (channelIndex) => {
-    const paths = [
-      { data: `./visualization_data/channel_${channelIndex}_napari_data.raw`, metadata: `./visualization_data/channel_${channelIndex}_napari_metadata.json` },
-      { data: `visualization_data/channel_${channelIndex}_napari_data.raw`, metadata: `visualization_data/channel_${channelIndex}_napari_metadata.json` },
-      { data: `./visualization_data/channel_${channelIndex}_data.raw`, metadata: `./visualization_data/channel_${channelIndex}_metadata.json` },
-      { data: `visualization_data/channel_${channelIndex}_data.raw`, metadata: `visualization_data/channel_${channelIndex}_metadata.json` }
-    ];
-
-    for (const path of paths) {
-      try {
-        let metadataResponse = await fetch(path.metadata);
-        if (!metadataResponse.ok) continue;
-        
-        const contentType = metadataResponse.headers.get('content-type');
-        if (contentType && !contentType.includes('application/json')) continue;
-        
-        const metadataText = await metadataResponse.text();
-        if (metadataText.trim().startsWith('<!DOCTYPE') || metadataText.trim().startsWith('<html')) continue;
-        
-        const metadata = JSON.parse(metadataText);
-        let dataResponse = await fetch(path.data);
-        if (!dataResponse.ok) continue;
-        
-        const dataContentType = dataResponse.headers.get('content-type');
-        if (dataContentType && dataContentType.includes('text/html')) continue;
-        
-        const arrayBuffer = await dataResponse.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        
-        return { data, metadata };
-      } catch (error) {
-        continue;
-      }
-    }
-    return null;
-  }, []);
+  // Load channel data using utility
+  // Note: loadChannelData is now imported from hooks/useChannelData
 
   // Extract voxel values within bounds for a channel
   const extractVoxelsInBounds = useCallback((channelData, bounds, thresholdMin, thresholdMax) => {
     if (!channelData || !bounds) return [];
-    
+
     const { data, metadata } = channelData;
     const shape = metadata.shape;
     const [zSize, ySize, xSize] = shape;
@@ -74,14 +40,14 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
         for (let x = voxelMinX; x <= voxelMaxX; x++) {
           const idx = z * ySize * xSize + y * xSize + x;
           if (idx >= data.length) continue;
-          
+
           const normalizedValue = data[idx];
           const actualValue = (normalizedValue / 255) * (dataMax - dataMin) + dataMin;
 
           // Apply thresholds
           let minThreshold = thresholdMin !== undefined ? thresholdMin : dataMin;
           let maxThreshold = thresholdMax !== undefined ? thresholdMax : dataMax;
-          
+
           if (minThreshold > maxThreshold) {
             [minThreshold, maxThreshold] = [maxThreshold, minThreshold];
           }
@@ -130,7 +96,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
       q1: q1 || 0,
       q2: q2 || 0,
       q3: q3 || 0,
-        min: min || 0,
+      min: min || 0,
       max: max || 0,
       distribution: sorted
     };
@@ -149,7 +115,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
     try {
       const bounds = selectedRegionData.bounds;
       const channelsToAnalyze = channels.length > 0 ? channels : selectedRegionData.channels || [];
-      
+
       if (channelsToAnalyze.length === 0) {
         setChannelStats(null);
         setLoading(false);
@@ -157,9 +123,9 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
       }
 
       const stats = {};
-      const volume = (bounds.max.x - bounds.min.x + 1) * 
-                     (bounds.max.y - bounds.min.y + 1) * 
-                     (bounds.max.z - bounds.min.z + 1);
+      const volume = (bounds.max.x - bounds.min.x + 1) *
+        (bounds.max.y - bounds.min.y + 1) *
+        (bounds.max.z - bounds.min.z + 1);
 
       // Analyze each channel
       for (const channelConfig of channelsToAnalyze) {
@@ -180,7 +146,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
           );
 
           const channelStat = calculateStats(voxels);
-          
+
           stats[channelConfig.channelIndex] = {
             name: `Channel ${channelConfig.channelIndex}`,
             channelIndex: channelConfig.channelIndex,
@@ -267,14 +233,14 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
       .attr('height', d => chartHeight - yScale(d.cellCount))
       .attr('fill', d => d.color)
       .attr('opacity', 0.8)
-      .on('mouseover', function(event, d) {
+      .on('mouseover', function (event, d) {
         d3.select(this).attr('opacity', 1);
         tooltip.style('opacity', 1)
           .html(`<strong>${d.name}</strong><br/>Cells: ${d.cellCount.toLocaleString()}<br/>Density: ${d.density.toFixed(2)} cells/μm³`)
           .style('left', (event.pageX + 10) + 'px')
           .style('top', (event.pageY - 10) + 'px');
       })
-      .on('mouseout', function() {
+      .on('mouseout', function () {
         d3.select(this).attr('opacity', 0.8);
         tooltip.style('opacity', 0);
       });
@@ -425,14 +391,14 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
           .attr('fill', colorScale(correlationMatrix[i][j]))
           .attr('stroke', '#000')
           .attr('stroke-width', 0.5)
-          .on('mouseover', function(event, d) {
+          .on('mouseover', function (event, d) {
             d3.select(this).attr('stroke-width', 2);
             tooltip.style('opacity', 1)
               .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Correlation: ${correlationMatrix[i][j].toFixed(3)}`)
               .style('left', (event.pageX + 10) + 'px')
               .style('top', (event.pageY - 10) + 'px');
           })
-          .on('mouseout', function() {
+          .on('mouseout', function () {
             d3.select(this).attr('stroke-width', 0.5);
             tooltip.style('opacity', 0);
           });
@@ -483,13 +449,14 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
   // Calculate Pearson correlation
   const calculatePearsonCorrelation = (x, y) => {
     if (!x || !y || x.length === 0 || y.length === 0 || x.length !== y.length) return 0;
-    
-    // Sample if arrays are too large
-    const sampleSize = Math.min(1000, x.length);
+
+    // Sample if arrays are too large - INCREASED ACCURACY
+    const MAX_SAMPLES = 50000; // Increased from 1000 for better accuracy
+    const sampleSize = Math.min(MAX_SAMPLES, x.length);
     const step = Math.max(1, Math.floor(x.length / sampleSize));
     const sampledX = [];
     const sampledY = [];
-    
+
     for (let i = 0; i < x.length; i += step) {
       sampledX.push(x[i]);
       sampledY.push(y[i]);
@@ -722,16 +689,16 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
   }, []);
 
   return (
-    <div 
+    <div
       ref={containerRef}
       style={{
-      height: '100%',
-      width: '100%',
-      backgroundColor: '#000000',
-      border: '1px solid #444',
-      padding: '1px',
-      display: 'flex',
-      flexDirection: 'column',
+        height: '100%',
+        width: '100%',
+        backgroundColor: '#000000',
+        border: '1px solid #444',
+        padding: '1px',
+        display: 'flex',
+        flexDirection: 'column',
         position: 'relative',
         overflow: 'hidden'
       }}
@@ -745,15 +712,15 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
         borderBottom: '1px solid #444',
         backgroundColor: '#0a0a0a'
       }}>
-        <h3 style={{ 
-          margin: 0, 
-          fontSize: '14px', 
-        color: 'white',
+        <h3 style={{
+          margin: 0,
+          fontSize: '14px',
+          color: 'white',
           fontWeight: 'normal'
         }}>
           Graph Panel
         </h3>
-        
+
         {/* Compact Toggle */}
         <div style={{
           display: 'flex',
@@ -786,7 +753,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
               <rect x="11" y="6" width="2" height="8" fill={graphType === 'bar' ? '#4ade80' : '#fff'} opacity={graphType === 'bar' ? 1 : 0.7} />
             </svg>
           </button>
-          
+
           <button
             onClick={() => setGraphType('heatmap')}
             style={{
@@ -816,7 +783,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
               <rect x="10" y="10" width="3" height="3" fill={graphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={graphType === 'heatmap' ? 1 : 0.7} />
             </svg>
           </button>
-          
+
           <button
             onClick={() => setGraphType('violin')}
             style={{
@@ -835,9 +802,9 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
             title="Violin Plot"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M8 2 L6 4 L5 6 L5 10 L6 12 L8 14 L10 12 L11 10 L11 6 L10 4 Z" 
-                    fill={graphType === 'violin' ? '#4ade80' : '#fff'} 
-                    opacity={graphType === 'violin' ? 1 : 0.7} />
+              <path d="M8 2 L6 4 L5 6 L5 10 L6 12 L8 14 L10 12 L11 10 L11 6 L10 4 Z"
+                fill={graphType === 'violin' ? '#4ade80' : '#fff'}
+                opacity={graphType === 'violin' ? 1 : 0.7} />
               <line x1="8" y1="2" x2="8" y2="14" stroke={graphType === 'violin' ? '#4ade80' : '#fff'} strokeWidth="1.5" opacity={graphType === 'violin' ? 1 : 0.7} />
             </svg>
           </button>
@@ -863,7 +830,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
             Loading...
           </div>
         )}
-        
+
         {error && (
           <div style={{
             position: 'absolute',
@@ -877,7 +844,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
             Error: {error}
           </div>
         )}
-        
+
         {!loading && !error && !selectedRegionData && (
           <div style={{
             position: 'absolute',
@@ -892,7 +859,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
             <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
           </div>
         )}
-        
+
         {!loading && !error && selectedRegionData && (!channelStats || Object.keys(channelStats).length === 0) && (
           <div style={{
             position: 'absolute',
@@ -907,7 +874,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [] }) => {
             <div style={{ fontSize: '10px', marginTop: '5px' }}>Enable channels to see statistics</div>
           </div>
         )}
-        
+
         <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
       </div>
     </div>
