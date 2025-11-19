@@ -3,14 +3,6 @@ import * as THREE from 'three';
 
 const buildLoadPaths = (channelIndex) => [
   {
-    data: `./visualization_data/channel_${channelIndex}_napari_data.raw`,
-    metadata: `./visualization_data/channel_${channelIndex}_napari_metadata.json`
-  },
-  {
-    data: `visualization_data/channel_${channelIndex}_napari_data.raw`,
-    metadata: `visualization_data/channel_${channelIndex}_napari_metadata.json`
-  },
-  {
     data: `./visualization_data/channel_${channelIndex}_data.raw`,
     metadata: `./visualization_data/channel_${channelIndex}_metadata.json`
   },
@@ -454,7 +446,8 @@ const Direction_view = ({ channels = [] }) => {
           const scaleZ = zSize / maxDim;
 
           const totalVoxels = zSize * ySize * xSize;
-          const highIntensityPoints = [];
+          const highIntensityPointsOriginal = [];
+          const highIntensityPointsScaled = [];
           const sampling = Math.max(1, Math.floor(Math.cbrt(totalVoxels) / 50));
           let highIntensityCount = 0;
 
@@ -468,10 +461,11 @@ const Direction_view = ({ channels = [] }) => {
 
                 if (value >= threshold) {
                   highIntensityCount += sampling * sampling * sampling;
+                  highIntensityPointsOriginal.push(new THREE.Vector3(x, y, z));
                   const nx = ((x / xSize) * 2 - 1) * scaleX;
                   const ny = ((y / ySize) * 2 - 1) * scaleY;
                   const nz = ((z / zSize) * 2 - 1) * scaleZ;
-                  highIntensityPoints.push(new THREE.Vector3(nx, ny, nz));
+                  highIntensityPointsScaled.push(new THREE.Vector3(nx, ny, nz));
                 }
               }
             }
@@ -479,19 +473,31 @@ const Direction_view = ({ channels = [] }) => {
 
           let direction, center;
           
-          if (highIntensityPoints.length < 2) {
-            console.warn(`Direction_view: Not enough high-intensity points (${highIntensityPoints.length}) for channel ${channelIndex}, using default direction`);
+          if (highIntensityPointsOriginal.length < 2) {
+            console.warn(`Direction_view: Not enough high-intensity points (${highIntensityPointsOriginal.length}) for channel ${channelIndex}, using default direction`);
             direction = new THREE.Vector3(1, 0, 0).normalize();
             center = new THREE.Vector3(0, 0, 0);
           } else {
-            const principalResult = computePrincipalDirection(highIntensityPoints);
+            const principalResult = computePrincipalDirection(highIntensityPointsOriginal);
             if (!principalResult) {
               console.warn(`Direction_view: Could not compute principal direction for channel ${channelIndex}, using default`);
               direction = new THREE.Vector3(1, 0, 0).normalize();
               center = new THREE.Vector3(0, 0, 0);
             } else {
-              direction = principalResult.direction;
-              center = principalResult.center;
+              const originalDirection = principalResult.direction;
+              const originalCenter = principalResult.center;
+              
+              const centerX = ((originalCenter.x / xSize) * 2 - 1) * scaleX;
+              const centerY = ((originalCenter.y / ySize) * 2 - 1) * scaleY;
+              const centerZ = ((originalCenter.z / zSize) * 2 - 1) * scaleZ;
+              center = new THREE.Vector3(centerX, centerY, centerZ);
+              
+              const dirX = originalDirection.x * scaleX;
+              const dirY = originalDirection.y * scaleY;
+              const dirZ = originalDirection.z * scaleZ;
+              direction = new THREE.Vector3(dirX, dirY, dirZ).normalize();
+              
+              console.log(`Direction_view: Channel ${channelIndex} - Original direction: (${originalDirection.x.toFixed(3)}, ${originalDirection.y.toFixed(3)}, ${originalDirection.z.toFixed(3)}), Scaled direction: (${direction.x.toFixed(3)}, ${direction.y.toFixed(3)}, ${direction.z.toFixed(3)})`);
             }
           }
           

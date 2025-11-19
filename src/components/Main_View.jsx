@@ -1115,24 +1115,48 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
     const loadedChannels = loadedChannelsRef.current;
     const channelDataCache = channelDataCacheRef.current;
 
-    const activeChannelIndices = new Set(channels.map((cfg) => cfg.channelIndex));
+    // Create a map of channel indices to their configs for quick lookup
+    const channelConfigMap = new Map();
+    channels.forEach((cfg) => {
+      channelConfigMap.set(cfg.channelIndex, cfg);
+    });
 
+    // First pass: Remove channels that are no longer in the list or are not visible
+    let needsRender = false;
     loadedChannels.forEach((entry, channelIndex) => {
-      if (!activeChannelIndices.has(channelIndex)) {
+      const channelConfig = channelConfigMap.get(channelIndex);
+      
+      if (!channelConfig) {
+        // Channel completely removed from list - dispose everything
         const mesh = entry?.mesh;
         if (mesh && scene.children.includes(mesh)) {
           scene.remove(mesh);
+          needsRender = true;
         }
         disposeMesh(mesh);
         removeMeshFromCollection(mesh, pointCloudsRef.current);
         loadedChannels.delete(channelIndex);
         channelDataCache.delete(channelIndex);
         console.log(`Main_View: 🗑️ Removed channel ${channelIndex} (no longer selected)`);
+      } else {
+        // Channel still exists - check visibility and remove from scene if not visible
+        const isVisible = channelConfig.visible !== false;
+        const mesh = entry?.mesh;
+        if (mesh && scene.children.includes(mesh) && !isVisible) {
+          scene.remove(mesh);
+          needsRender = true;
+          console.log(`Main_View: ⚠️ Channel ${channelIndex} removed from scene (not visible)`);
+        }
       }
     });
 
+    if (needsRender) {
+      renderScene();
+    }
+
     channelConfigsRef.current.clear();
 
+    // Second pass: Update channel configs and handle visibility changes
     channels.forEach((channelConfig) => {
       const channelIndex = channelConfig.channelIndex;
       channelConfigsRef.current.set(channelIndex, channelConfig);
@@ -1153,19 +1177,20 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
         loadedChannels.delete(channelIndex);
         channelDataCache.delete(channelIndex);
         mesh = null;
-        console.log(`Main_View: ♻️ Channel ${channelIndex} flagged for reload due to configuration change`);
+        console.log(`Main_View:  Channel ${channelIndex} flagged for reload due to configuration change`);
       }
 
+      // Handle visibility changes for existing meshes
       if (mesh) {
         const isVisible = channelConfig.visible !== false;
         const currentlyInScene = scene.children.includes(mesh);
         if (isVisible && !currentlyInScene) {
           scene.add(mesh);
-          console.log(`Main_View: ✅ Channel ${channelIndex} turned ON`);
+          console.log(`Main_View:  Channel ${channelIndex} turned ON`);
           renderScene();
         } else if (!isVisible && currentlyInScene) {
           scene.remove(mesh);
-          console.log(`Main_View: ⚠️ Channel ${channelIndex} turned OFF`);
+          console.log(`Main_View:  Channel ${channelIndex} turned OFF`);
           renderScene();
         }
       }
@@ -1187,7 +1212,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
         try {
           const currentConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
           if (!currentConfig || getConfigSignature(currentConfig) !== getConfigSignature(channelConfig)) {
-            console.log(`Main_View: ⏭️ Skipping stale load for channel ${channelConfig.channelIndex}`);
+            console.log(`Main_View:  Skipping stale load for channel ${channelConfig.channelIndex}`);
             continue;
           }
 
@@ -1201,7 +1226,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
 
           const latestConfig = channelConfigsRef.current.get(channelConfig.channelIndex);
           if (!latestConfig || getConfigSignature(latestConfig) !== getConfigSignature(channelConfig)) {
-            console.log(`Main_View: ⏹️ Loaded data discarded for channel ${channelConfig.channelIndex} (stale)`);
+            console.log(`Main_View:  Loaded data discarded for channel ${channelConfig.channelIndex} (stale)`);
             continue;
           }
 
@@ -1224,17 +1249,17 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
             if (channelConfig.visible !== false) {
               scene.add(mesh);
               mesh.renderOrder = 1;
-              console.log(`Main_View: ✅ Channel ${channelConfig.channelIndex} added (sampling=${sampling})`);
+              console.log(`Main_View:  Channel ${channelConfig.channelIndex} added (sampling=${sampling})`);
             } else {
-              console.log(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} prepared but not visible`);
+              console.log(`Main_View:  Channel ${channelConfig.channelIndex} prepared but not visible`);
             }
 
             renderScene();
           } else {
-            console.warn(`Main_View: ⚠️ Channel ${channelConfig.channelIndex} produced no voxels`);
+            console.warn(`Main_View:  Channel ${channelConfig.channelIndex} produced no voxels`);
           }
         } catch (error) {
-          console.error(`Main_View: ❌ Error loading channel ${channelConfig.channelIndex}:`, error);
+          console.error(`Main_View:  Error loading channel ${channelConfig.channelIndex}:`, error);
         }
 
         await new Promise((resolve) => setTimeout(resolve, 100));
