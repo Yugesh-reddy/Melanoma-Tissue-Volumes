@@ -67,7 +67,7 @@ const getConfigSignature = (config) =>
     config.opacity ?? ''
   ].join('|');
 
-const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => {
+const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initialSelectionBounds }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -89,6 +89,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
   const isSelectingRef = useRef(false);
   const selectionEndRef = useRef(null);
   const isTogglingRef = useRef(false);
+  const currentSelectionBoundsRef = useRef(initialSelectionBounds || null); // Store current selection bounds for refreshing on channel change
+  const [dataLoadVersion, setDataLoadVersion] = useState(0); // Track data loading updates
 
   // 3D Cuboid selection state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -599,11 +601,39 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       return null;
     }
 
-    const firstChannel = visibleChannels[0];
-    const channelData = channelDataCacheRef.current.get(firstChannel.channelIndex);
-    if (!channelData) return null;
+    // Find a reference channel with loaded data to calculate bounds
+    let referenceChannel = null;
+    let referenceData = null;
 
-    const { metadata } = channelData;
+    for (const channel of visibleChannels) {
+      let data = channelDataCacheRef.current.get(channel.channelIndex);
+
+      // If not in cache, try to fetch
+      if (!data) {
+        console.log(`Main_View: extractSelectedRegion - Data missing for channel ${channel.channelIndex}, fetching...`);
+        try {
+          data = await loadChannelData(channel.channelIndex);
+          if (data) {
+            channelDataCacheRef.current.set(channel.channelIndex, data);
+          }
+        } catch (err) {
+          console.warn(`Main_View: extractSelectedRegion - Failed to fetch channel ${channel.channelIndex}`, err);
+        }
+      }
+
+      if (data) {
+        referenceChannel = channel;
+        referenceData = data;
+        break; // Found a valid reference
+      }
+    }
+
+    if (!referenceData) {
+      console.warn('Main_View: extractSelectedRegion - Failed to obtain data for ANY visible channel');
+      return null;
+    }
+
+    const { metadata } = referenceData;
     const shape = metadata.shape;
     const [zSize, ySize, xSize] = shape;
     const maxDim = Math.max(zSize, ySize, xSize);
@@ -671,6 +701,9 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       return;
     }
 
+    // Store bounds for refreshing selection when channels change
+    currentSelectionBoundsRef.current = worldBounds;
+
     console.log('Main_View: ===== SELECTION COMPLETED =====');
     console.log('Main_View: 3D Cuboid selection completed');
     console.log('Main_View: World bounds:', worldBounds);
@@ -703,6 +736,44 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       console.error('Main_View: Error stack:', error.stack);
     }
   }, [channels, onSelectionChange, extractSelectedRegion]);
+
+  // Refresh selection when channels change or data loads
+  useEffect(() => {
+    if (currentSelectionBoundsRef.current) {
+      // Trigger selection refresh
+      // We no longer need to wait for isDataLoaded here because extractSelectedRegion
+      // will now fetch data if needed.
+      console.log('Main_View: Channels changed, triggering selection refresh...');
+
+      // Debounce to avoid rapid updates
+      const timer = setTimeout(() => {
+        handleSelectionComplete(currentSelectionBoundsRef.current);
+      }, 200);
+
+      return () => clearTimeout(timer);
+    } else {
+      console.log('Main_View: No currentSelectionBoundsRef to refresh');
+    }
+  }, [channels, handleSelectionComplete]);
+
+  // Restore selection from initial bounds if provided
+  useEffect(() => {
+    if (initialSelectionBounds && !currentSelectionBoundsRef.current) {
+      console.log('Main_View: Restoring selection from initial bounds:', initialSelectionBounds);
+      currentSelectionBoundsRef.current = initialSelectionBounds;
+      setSelectionMode(true);
+
+      // Restore wireframe
+      if (sceneRef.current) {
+        updateCuboidWireframe(initialSelectionBounds);
+        setCuboidCenter(initialSelectionBounds.center);
+        setCuboidSize(initialSelectionBounds.size);
+      }
+
+      // Trigger data extraction
+      handleSelectionComplete(initialSelectionBounds);
+    }
+  }, [initialSelectionBounds, handleSelectionComplete]);
 
   // Setup Three.js scene
   useEffect(() => {
@@ -1234,6 +1305,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
       }).length;
       console.log(`Main_View: Channel update complete. Visible ${visibleCount}/${visibleChannels.length}`);
       renderScene();
+      // Signal that data loading/processing has occurred
+      setDataLoadVersion(v => v + 1);
     };
 
     loadChannels();
@@ -1356,6 +1429,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange }) => 
                     cuboidRef.current = null;
                     setCuboidCenter(null);
                     setCuboidSize(null);
+                    currentSelectionBoundsRef.current = null; // Clear stored bounds
                   }
                 } catch (err) {
                   console.error('Main_View: Error clearing cuboid:', err);
