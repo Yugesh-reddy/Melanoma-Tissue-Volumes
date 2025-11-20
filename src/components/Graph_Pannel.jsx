@@ -415,11 +415,10 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .range([0, chartHeight])
       .padding(0.05);
 
-    // Color scale: blue (negative) -> white (zero) -> red (positive)
-    // Color scale: Better diverging scheme (Red-White-Blue)
-    // We use interpolateRdBu but reversed so Red is positive (1) and Blue is negative (-1)
-    const colorScale = d3.scaleSequential(t => d3.interpolateRdBu(1 - t))
-      .domain([-1, 1]);
+    // Color scale: Viridis (0 to 1)
+    // User requested Viridis and domain starting from 0
+    const colorScale = d3.scaleSequential(d3.interpolateViridis)
+      .domain([0, 1]);
 
     // Cells
     for (let i = 0; i < statsArray.length; i++) {
@@ -483,7 +482,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
     const legendY = (chartHeight - legendHeight) / 2;
 
     const legendScale = d3.scaleLinear()
-      .domain([1, -1]) // Top is 1, bottom is -1
+      .domain([1, 0]) // Top is 1, bottom is 0
       .range([0, legendHeight]);
 
     const gradientId = `heatmap-gradient-${Date.now()}`;
@@ -501,8 +500,8 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
     // Stop 100% = Bottom = -1 (Blue)
     for (let i = 0; i <= 100; i++) {
       const t = i / 100;
-      // Map t (0..1) to value (1..-1)
-      const value = 1 - t * 2;
+      // Map t (0..1) to value (1..0)
+      const value = 1 - t;
       legendGradient.append('stop')
         .attr('offset', `${i}%`)
         .attr('stop-color', colorScale(value));
@@ -670,7 +669,8 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       const normalizedDensity = density.map(d => [d[0], d[1] / maxDensity]);
 
       const bandwidth = xScale.bandwidth() / 2.2;
-      const xPos = xScale(stat.name);
+      // Fix alignment: Center the violin in the band
+      const xPos = xScale(stat.name) + xScale.bandwidth() / 2;
 
       // Create area path
       const area = d3.area()
