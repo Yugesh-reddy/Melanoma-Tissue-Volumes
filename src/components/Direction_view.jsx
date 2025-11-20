@@ -1,58 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { loadChannelData } from '../hooks/useChannelData';
 
-const buildLoadPaths = (channelIndex) => [
-  {
-    data: `./visualization_data/channel_${channelIndex}_data.raw`,
-    metadata: `./visualization_data/channel_${channelIndex}_metadata.json`
-  },
-  {
-    data: `visualization_data/channel_${channelIndex}_data.raw`,
-    metadata: `visualization_data/channel_${channelIndex}_metadata.json`
-  }
-];
-
-const loadChannelData = async (channelIndex) => {
-  for (const path of buildLoadPaths(channelIndex)) {
-    try {
-      const metadataResponse = await fetch(path.metadata);
-      if (!metadataResponse.ok) continue;
-
-      const contentType = metadataResponse.headers.get('content-type');
-      if (contentType && !contentType.includes('application/json')) continue;
-
-      const metadataText = await metadataResponse.text();
-      if (metadataText.trim().startsWith('<!DOCTYPE') || metadataText.trim().startsWith('<html')) continue;
-
-      const metadata = JSON.parse(metadataText);
-
-      const dataResponse = await fetch(path.data);
-      if (!dataResponse.ok) continue;
-
-      const dataContentType = dataResponse.headers.get('content-type');
-      if (dataContentType && dataContentType.includes('text/html')) continue;
-
-      const arrayBuffer = await dataResponse.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-
-      return { data, metadata };
-    } catch (error) {
-      if (!error.message.includes('Unexpected token') && !error.message.includes('JSON')) {
-        console.log(`Direction_view: Channel ${channelIndex} error trying ${path.data}:`, error.message);
-      }
-    }
-  }
-  return null;
-};
+// Load channel data using utility
+// Note: loadChannelData is now imported from hooks/useChannelData
 
 const hexToRgb = (hex) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
     ? {
-        r: parseInt(result[1], 16) / 255,
-        g: parseInt(result[2], 16) / 255,
-        b: parseInt(result[3], 16) / 255
-      }
+      r: parseInt(result[1], 16) / 255,
+      g: parseInt(result[2], 16) / 255,
+      b: parseInt(result[3], 16) / 255
+    }
     : { r: 1, g: 1, b: 1 };
 };
 
@@ -100,7 +60,7 @@ const computePrincipalDirection = (points) => {
   const p = trace;
   const r = det;
   const phi = Math.acos(Math.max(-1, Math.min(1, (2 * p * p * p - 9 * p * q + 27 * r) / (2 * Math.pow(p * p - 3 * q, 1.5)))));
-  
+
   const sqrtTerm = Math.sqrt(p * p - 3 * q);
   const lambda1 = p / 3 + (2 / 3) * sqrtTerm * Math.cos(phi / 3);
   const lambda2 = p / 3 + (2 / 3) * sqrtTerm * Math.cos((phi + 2 * Math.PI) / 3);
@@ -109,7 +69,7 @@ const computePrincipalDirection = (points) => {
   const maxLambda = Math.max(lambda1, lambda2, lambda3);
 
   let direction = new THREE.Vector3(1, 0, 0);
-  
+
   if (Math.abs(maxLambda - lambda1) < 0.001) {
     const denom = (yy - lambda1) * (zz - lambda1) - yz * yz;
     if (Math.abs(denom) > 1e-6) {
@@ -185,7 +145,7 @@ const Direction_view = ({ channels = [] }) => {
     const cylinderGeometry = new THREE.CylinderGeometry(thickness, thickness, lineLength, 16);
     const cylinderMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(r, g, b) });
     const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
-    
+
     cylinder.position.copy(lineCenter);
     const up = new THREE.Vector3(0, 1, 0);
     const quaternion = new THREE.Quaternion();
@@ -282,7 +242,7 @@ const Direction_view = ({ channels = [] }) => {
         cameraRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotationX + deltaY));
         updateCameraPosition();
       }
-      
+
       const rect = renderer.domElement.getBoundingClientRect();
       const mouse = new THREE.Vector2();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -290,17 +250,17 @@ const Direction_view = ({ channels = [] }) => {
 
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(mouse, camera);
-      
+
       const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
       const intersection = new THREE.Vector3();
       raycaster.ray.intersectPlane(plane, intersection);
-      
+
       setMousePosition({
         x: intersection.x.toFixed(3),
         y: intersection.y.toFixed(3),
         z: intersection.z.toFixed(3)
       });
-      
+
       mouseX = event.clientX;
       mouseY = event.clientY;
     };
@@ -381,7 +341,7 @@ const Direction_view = ({ channels = [] }) => {
       const visibleChannels = channels.filter(ch => ch.visible !== false);
       console.log(`Direction_view: Processing ${visibleChannels.length} visible channel(s) out of ${channels.length} total`);
       console.log(`Direction_view: Visible channels:`, visibleChannels.map(ch => ({ index: ch.channelIndex, color: ch.color, visible: ch.visible })));
-      
+
       for (const channelConfig of visibleChannels) {
         const channelIndex = channelConfig.channelIndex;
         if (channelIndex === undefined || channelIndex === null) {
@@ -472,7 +432,7 @@ const Direction_view = ({ channels = [] }) => {
           }
 
           let direction, center;
-          
+
           if (highIntensityPointsOriginal.length < 2) {
             console.warn(`Direction_view: Not enough high-intensity points (${highIntensityPointsOriginal.length}) for channel ${channelIndex}, using default direction`);
             direction = new THREE.Vector3(1, 0, 0).normalize();
@@ -486,26 +446,26 @@ const Direction_view = ({ channels = [] }) => {
             } else {
               const originalDirection = principalResult.direction;
               const originalCenter = principalResult.center;
-              
+
               const centerX = ((originalCenter.x / xSize) * 2 - 1) * scaleX;
               const centerY = ((originalCenter.y / ySize) * 2 - 1) * scaleY;
               const centerZ = ((originalCenter.z / zSize) * 2 - 1) * scaleZ;
               center = new THREE.Vector3(centerX, centerY, centerZ);
-              
+
               const dirX = originalDirection.x * scaleX;
               const dirY = originalDirection.y * scaleY;
               const dirZ = originalDirection.z * scaleZ;
               direction = new THREE.Vector3(dirX, dirY, dirZ).normalize();
-              
+
               console.log(`Direction_view: Channel ${channelIndex} - Original direction: (${originalDirection.x.toFixed(3)}, ${originalDirection.y.toFixed(3)}, ${originalDirection.z.toFixed(3)}), Scaled direction: (${direction.x.toFixed(3)}, ${direction.y.toFixed(3)}, ${direction.z.toFixed(3)})`);
             }
           }
-          
+
           const voxelRatio = highIntensityCount / totalVoxels;
           const baseThickness = 0.02;
           const thickness = Math.max(baseThickness, Math.min(0.05, baseThickness + voxelRatio * 0.03));
           const arrowLength = 1.5;
-          
+
           const arrow = createArrow(direction, center, colorHex, arrowLength, thickness);
           console.log(`Direction_view: Created arrow for channel ${channelIndex} with thickness ${thickness.toFixed(3)} and color ${colorHex}`);
 
@@ -518,7 +478,7 @@ const Direction_view = ({ channels = [] }) => {
       }
 
       console.log(`Direction_view: Created ${arrowsRef.current.length} arrow(s) for ${visibleChannels.length} visible channel(s)`);
-      
+
       if (rendererRef.current && cameraRef.current) {
         rendererRef.current.render(scene, cameraRef.current);
       }
