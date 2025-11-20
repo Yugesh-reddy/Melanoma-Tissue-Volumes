@@ -1,7 +1,15 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
+import { loadChannelData } from '../hooks/useChannelData';
 
-const Local_View = ({ selectedRegionData }) => {
+const OPACITY_FLOOR = 0.35;
+const OPACITY_BOOST = 1.3;
+const EDGE_FEATHER = 0.99;
+const JITTER_SCALE = 0.1;
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const Local_View = ({ selectedRegionData, channels = [] }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -10,58 +18,32 @@ const Local_View = ({ selectedRegionData }) => {
   const voxelMeshesRef = useRef([]);
   const boundingBoxRef = useRef(null);
   const axesHelperRef = useRef(null);
-  
+
   // State for UI display
   const [cellCount, setCellCount] = useState(0);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  
+
+  // Debug: Log props changes
+  useEffect(() => {
+    console.log('Local_View: Props received - selectedRegionData:', selectedRegionData);
+    console.log('Local_View: Props received - channels:', channels);
+  }, [selectedRegionData, channels]);
+
   // Camera state for local view (super zoomed)
   const cameraStateRef = useRef({
     rotation: { x: 0.5, y: 0.5 },
     distance: 0.3, // Much closer for super zoom
     panOffset: { x: 0, y: 0, z: 0 }
   });
-  
+
   // Store initial camera state for reset
   const initialCameraStateRef = useRef(null);
 
-  // Load channel data (same as Main_View)
-  const loadChannelData = async (channelIndex) => {
-    const paths = [
-      { data: `./visualization_data/channel_${channelIndex}_napari_data.raw`, metadata: `./visualization_data/channel_${channelIndex}_napari_metadata.json` },
-      { data: `visualization_data/channel_${channelIndex}_napari_data.raw`, metadata: `visualization_data/channel_${channelIndex}_napari_metadata.json` },
-      { data: `./visualization_data/channel_${channelIndex}_data.raw`, metadata: `./visualization_data/channel_${channelIndex}_metadata.json` },
-      { data: `visualization_data/channel_${channelIndex}_data.raw`, metadata: `visualization_data/channel_${channelIndex}_metadata.json` }
-    ];
+  // Ref for debouncing channel updates
+  const updateTimeoutRef = useRef(null);
 
-    for (const path of paths) {
-      try {
-        let metadataResponse = await fetch(path.metadata);
-        if (!metadataResponse.ok) continue;
-        
-        const contentType = metadataResponse.headers.get('content-type');
-        if (contentType && !contentType.includes('application/json')) continue;
-        
-        const metadataText = await metadataResponse.text();
-        if (metadataText.trim().startsWith('<!DOCTYPE') || metadataText.trim().startsWith('<html')) continue;
-        
-        const metadata = JSON.parse(metadataText);
-        let dataResponse = await fetch(path.data);
-        if (!dataResponse.ok) continue;
-        
-        const dataContentType = dataResponse.headers.get('content-type');
-        if (dataContentType && dataContentType.includes('text/html')) continue;
-        
-        const arrayBuffer = await dataResponse.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        
-        return { data, metadata };
-      } catch (error) {
-        continue;
-      }
-    }
-    return null;
-  };
+  // Load channel data using utility
+  // Note: loadChannelData is now imported from hooks/useChannelData
 
   // Create voxel visualization for a channel region (similar to Main_View but for selected region)
   // Uses scaling factors from Main_View to maintain exact 3D positions
@@ -71,21 +53,21 @@ const Local_View = ({ selectedRegionData }) => {
     const { color, thresholdMin, thresholdMax } = channelConfig;
     const shape = metadata.shape;
     const [zSize, ySize, xSize] = shape;
-    
+
     console.log(`Local_View: Creating visualization for channel ${channelConfig.channelIndex}`);
     console.log(`Local_View: Shape: [${zSize}, ${ySize}, ${xSize}], Bounds:`, bounds);
-    
+
     const dataRange = metadata.dataRange || [0, 65535];
     const dataMin = dataRange[0];
     const dataMax = dataRange[1];
-    
+
     let minThreshold = thresholdMin !== undefined ? thresholdMin : dataMin;
     let maxThreshold = thresholdMax !== undefined ? thresholdMax : dataMax;
-    
+
     if (minThreshold > maxThreshold) {
       [minThreshold, maxThreshold] = [maxThreshold, minThreshold];
     }
-    
+
     minThreshold = Math.max(dataMin, Math.min(dataMax, minThreshold));
     maxThreshold = Math.max(dataMin, Math.min(dataMax, maxThreshold));
 
@@ -101,7 +83,7 @@ const Local_View = ({ selectedRegionData }) => {
     const opacities = [];
     const baseOpacityFloor = 0.35;
     const opacityBoost = 1.3;
-    
+
     // Use scaling factors from Main_View if provided, otherwise calculate them
     // This ensures exact 3D position matching between Main_View and Local_View
     let scaleX, scaleY, scaleZ;
@@ -138,6 +120,16 @@ const Local_View = ({ selectedRegionData }) => {
     let pointCount = 0;
     let thresholdPassCount = 0;
 
+    // CRITICAL: Calculate step sizes BEFORE the loop so they can be used for jitter
+    // Use EXACT same voxel step size calculation as Main_View
+    // This ensures 1:1 spatial scale matching - NO additional scaling!
+    const stepX = (2 / xSize) * scaleX * Math.max(1, voxelSampling);
+    const stepY = (2 / ySize) * scaleY * Math.max(1, voxelSampling);
+    const stepZ = (2 / zSize) * scaleZ * Math.max(1, voxelSampling);
+
+    console.log(`Local_View: Voxel step sizes (1:1 with Main_View): X=${stepX.toFixed(6)}, Y=${stepY.toFixed(6)}, Z=${stepZ.toFixed(6)}`);
+    console.log(`Local_View: Using sampling=${voxelSampling} (full resolution)`);
+
     for (let z = voxelMinZ; z <= voxelMaxZ; z += voxelSampling) {
       for (let y = voxelMinY; y <= voxelMaxY; y += voxelSampling) {
         for (let x = voxelMinX; x <= voxelMaxX; x += voxelSampling) {
@@ -146,7 +138,7 @@ const Local_View = ({ selectedRegionData }) => {
             console.warn(`Local_View: Index ${idx} out of bounds (data length: ${data.length})`);
             continue;
           }
-          
+
           const normalizedValue = data[idx];
           const actualValue = (normalizedValue / 255) * (dataMax - dataMin) + dataMin;
 
@@ -154,24 +146,34 @@ const Local_View = ({ selectedRegionData }) => {
             thresholdPassCount++;
             // Use EXACT same coordinate calculation as Main_View
             // This ensures 1:1 spatial position matching
+            // Fix Mirror Image: Invert X axis to match Main_View's coordinate system
             let nx = ((x / xSize) * 2 - 1) * scaleX;
             let ny = ((y / ySize) * 2 - 1) * scaleY;
             let nz = ((z / zSize) * 2 - 1) * scaleZ;
-            
+
+            nx = -nx; // Flip X to fix mirror image
+
+            // Apply jitter to match Main_View visual style (reduces aliasing/moire)
+            const jitterX = (Math.random() - 0.5) * stepX * JITTER_SCALE;
+            const jitterY = (Math.random() - 0.5) * stepY * JITTER_SCALE;
+            const jitterZ = (Math.random() - 0.5) * stepZ * JITTER_SCALE;
+
             // Apply center offset to center geometry at origin (0,0,0) without scaling
-            // This maintains exact spatial relationships while centering the view
             if (centerOffset) {
               nx -= centerOffset.x;
               ny -= centerOffset.y;
               nz -= centerOffset.z;
             }
-            
-            points.push(nx, ny, nz);
 
-            const pointOpacity = dataMax > 0 ? actualValue / dataMax : 0;
-            const boostedOpacity = Math.min(1, pointOpacity * opacityBoost);
-            const clampedOpacity = Math.max(baseOpacityFloor, boostedOpacity);
-            opacities.push(clampedOpacity);
+            points.push(nx + jitterX, ny + jitterY, nz + jitterZ);
+
+            // Match Main_View opacity calculation EXACTLY
+            const thresholdSpan = Math.max(1, maxThreshold - minThreshold);
+            const normalizedOpacity = (actualValue - minThreshold) / thresholdSpan;
+            const scaledOpacity = clamp(normalizedOpacity, 0, 1);
+            const finalOpacity = OPACITY_FLOOR + (1 - OPACITY_FLOOR) * scaledOpacity * OPACITY_BOOST;
+
+            opacities.push(clamp(finalOpacity, OPACITY_FLOOR, 1));
             pointCount++;
           }
         }
@@ -186,16 +188,10 @@ const Local_View = ({ selectedRegionData }) => {
       return null;
     }
 
-    // CRITICAL: Use EXACT same voxel step size calculation as Main_View
-    // This ensures 1:1 spatial scale matching - NO additional scaling!
-    // Main_View uses: stepX = (2 / xSize) * scaleX * Math.max(1, sampling)
-    // voxelSampling is already declared above (always = 1 for full resolution)
-    const stepX = (2 / xSize) * scaleX * Math.max(1, voxelSampling);
-    const stepY = (2 / ySize) * scaleY * Math.max(1, voxelSampling);
-    const stepZ = (2 / zSize) * scaleZ * Math.max(1, voxelSampling);
-    
-    console.log(`Local_View: Voxel step sizes (1:1 with Main_View): X=${stepX.toFixed(6)}, Y=${stepY.toFixed(6)}, Z=${stepZ.toFixed(6)}`);
-    console.log(`Local_View: Using sampling=${voxelSampling} (full resolution)`);
+    // Step sizes already calculated above
+    // const stepX = ...
+    // const stepY = ...
+    // const stepZ = ...
 
     const baseGeometry = new THREE.BoxGeometry(stepX, stepY, stepZ);
     const geometry = new THREE.InstancedBufferGeometry();
@@ -214,82 +210,55 @@ const Local_View = ({ selectedRegionData }) => {
     const voxelMaterial = new THREE.ShaderMaterial({
       uniforms: {
         color: { value: new THREE.Color(r, g, b) },
-        lightDirection: { value: new THREE.Vector3(0, 0, 1) },
-        ambientColor: { value: new THREE.Color(0.95, 0.95, 0.95) },
-        specularColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
-        shininess: { value: 1.0 },
-        brightness: { value: 2.0 },
-        opacityBoost: { value: opacityBoost },
-        edgeFeather: { value: 0.99 }
+        edgeFeather: { value: EDGE_FEATHER }
       },
       vertexShader: `
         attribute vec3 instanceOffset;
         attribute float instanceOpacity;
         varying float vOpacity;
-        varying vec3 vWorldPos;
-        varying vec3 vViewDir;
-        varying vec3 vNormal;
         varying vec3 vLocalPos;
         void main() {
           vOpacity = instanceOpacity;
           vec3 transformed = position + instanceOffset;
-          vNormal = normalize(normalMatrix * normal);
           vLocalPos = position;
-          vec4 worldPosition = modelMatrix * vec4(transformed, 1.0);
-          vWorldPos = worldPosition.xyz;
           vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-          vViewDir = normalize(-mvPosition.xyz);
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
       fragmentShader: `
         uniform vec3 color;
-        uniform float opacityBoost;
-        uniform vec3 lightDirection;
-        uniform vec3 ambientColor;
-        uniform vec3 specularColor;
-        uniform float shininess;
-        uniform float brightness;
         uniform float edgeFeather;
         varying float vOpacity;
-        varying vec3 vWorldPos;
-        varying vec3 vViewDir;
-        varying vec3 vNormal;
         varying vec3 vLocalPos;
         void main() {
-          vec3 normal = normalize(vNormal);
-          vec3 V = normalize(vViewDir);
-          vec3 L = normalize(V);
-          float diffuse = max(dot(normal, L), 0.0);
-          vec3 R = reflect(-L, normal);
-          float spec = pow(max(dot(R, V), 0.0), shininess);
-          float base = clamp(vOpacity * opacityBoost, 0.0, 1.0);
+          float base = clamp(vOpacity, 0.0, 1.0);
           float edge = max(max(abs(vLocalPos.x), abs(vLocalPos.y)), abs(vLocalPos.z));
           float edgeFade = smoothstep(0.5 - edgeFeather, 0.5, edge);
           base *= (1.0 - edgeFade);
-          vec3 baseColor = pow(color, vec3(0.55));
-          vec3 lighting = ambientColor + diffuse * baseColor + spec * specularColor;
-          vec3 finalColor = lighting * brightness;
-          float alpha = clamp(base, 0.0, 1.0);
-          if (alpha <= 0.01) discard;
-          gl_FragColor = vec4(finalColor * alpha, alpha);
+          if (base <= 0.01) discard;
+          
+          // Match Main_View color processing
+          vec3 finalColor = pow(color, vec3(0.55));
+          
+          // Additive blending expects pre-multiplied alpha
+          gl_FragColor = vec4(finalColor * base, base);
         }
       `,
       transparent: true,
-      depthWrite: true,
-      depthTest: true,
-      blending: THREE.NormalBlending
+      depthWrite: false, // Disable depth write for additive blending
+      depthTest: false,  // Disable depth test to see through volume
+      blending: THREE.AdditiveBlending
     });
 
     const mesh = new THREE.Mesh(geometry, voxelMaterial);
     mesh.frustumCulled = false;
     mesh.userData = { channelIndex: channelConfig.channelIndex };
-    
+
     return mesh;
   };
 
-  // Update camera position
-  const updateCameraPosition = () => {
+  // Update camera position - use useCallback to ensure it's stable
+  const updateCameraPosition = useCallback(() => {
     if (!cameraRef.current) return;
 
     const state = cameraStateRef.current;
@@ -308,40 +277,83 @@ const Local_View = ({ selectedRegionData }) => {
     cameraRef.current.position.z = lookAtPoint.z + radius * Math.cos(theta) * Math.cos(phi);
     cameraRef.current.up.set(0, -1, 0);
     cameraRef.current.lookAt(lookAtPoint);
-  };
+  }, []);
 
-  // Update lighting based on camera direction
-  const updateLighting = () => {
-    const camera = cameraRef.current;
-    if (!camera) return;
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    voxelMeshesRef.current.forEach(mesh => {
-      const material = mesh?.material;
-      if (material && material.uniforms && material.uniforms.lightDirection) {
-        material.uniforms.lightDirection.value.copy(direction);
-      }
-    });
-  };
+  // Update lighting based on camera direction - NO OP for unlit shader
+  const updateLighting = useCallback(() => {
+    // No lighting to update
+  }, []);
 
   // Create visualization from selected region data
-  const createLocalVisualization = async (selectedData) => {
-    if (!sceneRef.current || !selectedData || !selectedData.channels || !selectedData.bounds) {
+  // channelsOverride: optional array of current channel configs to use instead of stored channels
+  const createLocalVisualization = async (selectedData, channelsOverride = null) => {
+    if (!sceneRef.current || !selectedData || !selectedData.bounds) {
       console.log('Local_View: Invalid selected data', selectedData);
       return;
     }
 
+    // Use current channels (channelsOverride) as the source of truth
+    // This ensures that any globally selected/visible channel is shown in the local view,
+    // regardless of whether it was active when the region was originally selected.
+    // CRITICAL: Always prefer channelsOverride (live state) over selectedData.channels (stale state)
+    let channelsToUse = channelsOverride && channelsOverride.length > 0 ? channelsOverride : selectedData.channels;
+
+    // If no current channels provided (shouldn't happen in normal flow), fallback to stored channels
+    if (!channelsToUse || channelsToUse.length === 0) {
+      console.log('Local_View: No current channels provided, falling back to stored channels');
+      channelsToUse = selectedData.channels || [];
+    }
+
+    console.log(`Local_View: Using ${channelsToUse.length} channel(s) for visualization`);
+
+    if (channelsToUse.length === 0) {
+      console.log('Local_View: No channels available');
+      // Clear scene if no channels
+      voxelMeshesRef.current.forEach(mesh => {
+        sceneRef.current.remove(mesh);
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) mesh.material.dispose();
+      });
+      voxelMeshesRef.current = [];
+      setCellCount(0);
+      return;
+    }
+
+    // Filter to only visible channels
+    const visibleChannels = channelsToUse.filter(c => c.visible !== false);
+    if (visibleChannels.length === 0) {
+      console.log('Local_View: No visible channels');
+      // Clear scene if no visible channels
+      voxelMeshesRef.current.forEach(mesh => {
+        sceneRef.current.remove(mesh);
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) mesh.material.dispose();
+      });
+      voxelMeshesRef.current = [];
+      setCellCount(0);
+      return;
+    }
+
     console.log('Local_View: Creating visualization for selected region', selectedData);
+    console.log(`Local_View: Using ${visibleChannels.length} visible channel(s) (${channelsOverride ? 'current' : 'stored'} channels)`);
 
     const scene = sceneRef.current;
-    
+
     // Clear existing meshes
-    voxelMeshesRef.current.forEach(mesh => {
-      scene.remove(mesh);
-      if (mesh.geometry) mesh.geometry.dispose();
-      if (mesh.material) mesh.material.dispose();
-    });
+    // Clear existing meshes - ROBUST CLEANUP
+    // Iterate backwards to safely remove
+    for (let i = scene.children.length - 1; i >= 0; i--) {
+      const child = scene.children[i];
+      // Remove meshes and helpers, but keep lights
+      if (child.isMesh || child.isLineSegments || child.isAxesHelper) {
+        scene.remove(child);
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      }
+    }
     voxelMeshesRef.current = [];
+    boundingBoxRef.current = null;
+    axesHelperRef.current = null;
 
     // Remove existing bounding box
     if (boundingBoxRef.current) {
@@ -357,23 +369,33 @@ const Local_View = ({ selectedRegionData }) => {
       axesHelperRef.current = null;
     }
 
-    const { channels, bounds, scaling } = selectedData;
-    if (channels.length === 0) {
-      console.log('Local_View: No channels in selection');
+    const { bounds, scaling } = selectedData;
+
+    // Find a reference channel with loaded data to calculate bounding box
+    let referenceChannelConfig = null;
+    let referenceData = null;
+
+    for (const channelConfig of visibleChannels) {
+      try {
+        const data = await loadChannelData(channelConfig.channelIndex);
+        if (data) {
+          referenceChannelConfig = channelConfig;
+          referenceData = data;
+          break; // Found a valid reference
+        }
+      } catch (err) {
+        console.warn(`Local_View: Failed to load channel ${channelConfig.channelIndex} for reference`, err);
+      }
+    }
+
+    if (!referenceData) {
+      console.warn('Local_View: Failed to load data for ANY visible channel - cannot create visualization');
       return;
     }
 
-    // Load first channel data to get metadata for bounding box calculation
-    const firstChannelConfig = channels[0];
-    const firstChannelData = await loadChannelData(firstChannelConfig.channelIndex);
-    if (!firstChannelData) {
-      console.log('Local_View: Failed to load first channel data');
-      return;
-    }
-
-    const { metadata: firstMetadata } = firstChannelData;
+    const { metadata: firstMetadata } = referenceData;
     const [zSize, ySize, xSize] = firstMetadata.shape;
-    
+
     // Use scaling factors from Main_View if available to maintain exact 3D positions
     let scaleXData, scaleYData, scaleZData;
     if (scaling) {
@@ -393,18 +415,18 @@ const Local_View = ({ selectedRegionData }) => {
     const boundsWidth = bounds.max.x - bounds.min.x + 1;
     const boundsHeight = bounds.max.y - bounds.min.y + 1;
     const boundsDepth = bounds.max.z - bounds.min.z + 1;
-    
+
     // Calculate center in normalized coordinates (same as Main_View)
     const boundsCenterX = (bounds.min.x + bounds.max.x) / 2;
     const boundsCenterY = (bounds.min.y + bounds.max.y) / 2;
     const boundsCenterZ = (bounds.min.z + bounds.max.z) / 2;
-    
+
     const boxCenter = {
-      x: ((boundsCenterX / xSize) * 2 - 1) * scaleXData,
+      x: -((boundsCenterX / xSize) * 2 - 1) * scaleXData, // Flip X center too
       y: ((boundsCenterY / ySize) * 2 - 1) * scaleYData,
       z: ((boundsCenterZ / zSize) * 2 - 1) * scaleZData
     };
-    
+
     // Calculate bounding box size in normalized space (exact same calculation as Main_View)
     const boxSize = {
       x: (boundsWidth / xSize) * 2 * scaleXData,
@@ -428,7 +450,7 @@ const Local_View = ({ selectedRegionData }) => {
     // Pass scaling factors to maintain exact 3D positions
     let meshCount = 0;
     let totalCellCount = 0;
-    
+
     // Calculate center offset BEFORE creating meshes so we can adjust positions
     // Use the same center calculation as boxCenter
     const centerOffset = {
@@ -436,28 +458,45 @@ const Local_View = ({ selectedRegionData }) => {
       y: boxCenter.y,
       z: boxCenter.z
     };
-    
-    console.log(`Local_View: Center offset to apply: (${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
-    
-    for (const channelConfig of channels) {
-      const channelData = await loadChannelData(channelConfig.channelIndex);
-      if (!channelData) {
-        console.log(`Local_View: Failed to load channel ${channelConfig.channelIndex}`);
-        continue;
-      }
 
-      const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
-      if (mesh) {
-        scene.add(mesh);
-        voxelMeshesRef.current.push(mesh);
-        meshCount++;
-        totalCellCount += mesh.geometry.instanceCount;
-        console.log(`Local_View: Added mesh for channel ${channelConfig.channelIndex} with ${mesh.geometry.instanceCount} instances`);
-      } else {
-        console.log(`Local_View: No mesh created for channel ${channelConfig.channelIndex} (no points in bounds)`);
+    console.log(`Local_View: Center offset to apply: (${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
+
+    console.log(`Local_View: Processing ${visibleChannels.length} visible channel(s)`);
+    for (const channelConfig of visibleChannels) {
+      try {
+        console.log(`Local_View: Loading channel ${channelConfig.channelIndex}...`);
+        const channelData = await loadChannelData(channelConfig.channelIndex);
+        if (!channelData) {
+          console.warn(`Local_View: Failed to load channel ${channelConfig.channelIndex}`);
+          continue;
+        }
+        console.log(`Local_View: Channel ${channelConfig.channelIndex} loaded, creating visualization...`);
+
+        const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
+        if (mesh) {
+          console.log(`Local_View: Mesh created for channel ${channelConfig.channelIndex}, adding to scene...`);
+
+          // Ensure mesh is visible and properly configured
+          mesh.visible = true;
+          mesh.frustumCulled = false;
+
+          scene.add(mesh);
+          voxelMeshesRef.current.push(mesh);
+          meshCount++;
+          totalCellCount += mesh.geometry.instanceCount;
+          console.log(`Local_View: ✓ Added mesh for channel ${channelConfig.channelIndex} with ${mesh.geometry.instanceCount} instances`);
+          console.log(`Local_View: Mesh position:`, mesh.position);
+          console.log(`Local_View: Mesh visible:`, mesh.visible);
+          console.log(`Local_View: Mesh in scene:`, scene.children.includes(mesh));
+        } else {
+          console.warn(`Local_View: ✗ No mesh created for channel ${channelConfig.channelIndex} (no points in bounds)`);
+        }
+      } catch (error) {
+        console.error(`Local_View: Error processing channel ${channelConfig.channelIndex}:`, error);
+        console.error(`Local_View: Error stack:`, error.stack);
       }
     }
-    
+
     // Store cell count for UI display
     setCellCount(totalCellCount);
 
@@ -475,46 +514,94 @@ const Local_View = ({ selectedRegionData }) => {
     if (boundingBoxRef.current) {
       boundingBoxRef.current.position.set(0, 0, 0);
     }
-    
+
     if (axesHelperRef.current) {
       axesHelperRef.current.position.set(0, 0, 0);
     }
-    
+
     // Set camera to look at origin (where geometry is centered)
     cameraStateRef.current.panOffset = { x: 0, y: 0, z: 0 };
-    
+
     // Calculate camera distance based on ACTUAL cuboid dimensions (not auto-fit)
     // Use the maximum dimension of the bounding box to determine appropriate distance
-    const maxDimension = Math.max(boxSize.x, boxSize.y, boxSize.z);
-    
-    // Calculate camera distance to show the cuboid with appropriate padding
-    // Formula: distance = (maxDimension / 2) / tan(fov/2) * paddingFactor
-    const fovRad = (60 * Math.PI) / 180; // Camera FOV in radians
-    const paddingFactor = 1.5; // Padding around cuboid (1.5x = 50% padding)
-    const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
-    cameraStateRef.current.distance = baseDistance * paddingFactor;
-    
-    // Clamp distance to reasonable bounds
-    cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, cameraStateRef.current.distance));
-    
+    const maxDimension = Math.max(Math.abs(boxSize.x), Math.abs(boxSize.y), Math.abs(boxSize.z));
+
+    // Ensure we have a valid dimension
+    if (maxDimension > 0 && Number.isFinite(maxDimension)) {
+      // Calculate camera distance to show the cuboid with appropriate padding
+      // Formula: distance = (maxDimension / 2) / tan(fov/2) * paddingFactor
+      const fovRad = (60 * Math.PI) / 180; // Camera FOV in radians
+      const paddingFactor = 2.0; // Increased padding for better view
+      const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
+      cameraStateRef.current.distance = baseDistance * paddingFactor;
+
+      // Clamp distance to reasonable bounds
+      cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, cameraStateRef.current.distance));
+    } else {
+      // Fallback to a reasonable default distance
+      // console.warn('Local_View: Invalid maxDimension, using default camera distance');
+      cameraStateRef.current.distance = 0.5;
+    }
+
     // Reset camera rotation to a good viewing angle
     cameraStateRef.current.rotation = { x: 0.5, y: 0.5 };
-    
-    console.log(`Local_View: Geometry centered at origin (offset: ${centerOffsetX.toFixed(4)}, ${centerOffsetY.toFixed(4)}, ${centerOffsetZ.toFixed(4)})`);
+
+    console.log(`Local_View: Geometry centered at origin (offset: ${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
     console.log(`Local_View: Camera distance: ${cameraStateRef.current.distance.toFixed(4)} (based on max dimension: ${maxDimension.toFixed(4)})`);
-    
+
     // Store initial camera state for reset functionality
     initialCameraStateRef.current = {
       rotation: { ...cameraStateRef.current.rotation },
       distance: cameraStateRef.current.distance,
       panOffset: { ...cameraStateRef.current.panOffset }
     };
-    
+
     updateCameraPosition();
     updateLighting();
-    
+
+    // Force multiple renders to ensure visualization is displayed immediately
+    if (rendererRef.current && cameraRef.current && sceneRef.current) {
+      // Update camera and lighting first
+      updateCameraPosition();
+      updateLighting();
+
+      // Render immediately
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+
+      // Also render on next frame to ensure it's visible
+      requestAnimationFrame(() => {
+        if (rendererRef.current && cameraRef.current && sceneRef.current) {
+          updateCameraPosition();
+          updateLighting();
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+
+          // One more render after a short delay to ensure everything is displayed
+          setTimeout(() => {
+            if (rendererRef.current && cameraRef.current && sceneRef.current) {
+              rendererRef.current.render(sceneRef.current, cameraRef.current);
+            }
+          }, 50);
+        }
+      });
+    }
+
     console.log('Local_View: Camera positioned at distance', cameraStateRef.current.distance, 'looking at', boxCenter);
-    console.log('Local_View: Visualization complete');
+    console.log(`Local_View: Visualization complete - ${meshCount} meshes added to scene, ${totalCellCount} total cells`);
+    console.log(`Local_View: Scene children count: ${sceneRef.current.children.length}`);
+    console.log(`Local_View: Voxel meshes count: ${voxelMeshesRef.current.length}`);
+    console.log(`Local_View: Renderer exists:`, !!rendererRef.current);
+    console.log(`Local_View: Camera exists:`, !!cameraRef.current);
+
+    // Log mesh details for debugging
+    voxelMeshesRef.current.forEach((mesh, idx) => {
+      console.log(`Local_View: Mesh ${idx}: visible=${mesh.visible}, position=`, mesh.position, `instances=${mesh.geometry.instanceCount}, inScene=${sceneRef.current.children.includes(mesh)}`);
+    });
+
+    // Verify renderer is working
+    if (rendererRef.current && rendererRef.current.domElement) {
+      console.log(`Local_View: Renderer canvas size: ${rendererRef.current.domElement.width}x${rendererRef.current.domElement.height}`);
+      console.log(`Local_View: Renderer canvas visible:`, rendererRef.current.domElement.offsetWidth > 0 && rendererRef.current.domElement.offsetHeight > 0);
+    }
   };
 
   // Setup Three.js scene
@@ -535,7 +622,7 @@ const Local_View = ({ selectedRegionData }) => {
     updateCameraPosition();
 
     // Renderer
-    const renderer = new THREE.WebGLRenderer({ 
+    const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
       powerPreference: "high-performance"
@@ -546,8 +633,21 @@ const Local_View = ({ selectedRegionData }) => {
     if (renderer.outputEncoding !== undefined) {
       renderer.outputEncoding = THREE.sRGBEncoding;
     }
+
+    // Ensure canvas is visible and properly styled
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    console.log('Local_View: Renderer initialized, canvas size:', width, 'x', height);
+    console.log('Local_View: Canvas element:', renderer.domElement);
+    console.log('Local_View: Canvas visible:', renderer.domElement.offsetWidth > 0 && renderer.domElement.offsetHeight > 0);
 
     // Ambient light
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
@@ -597,13 +697,35 @@ const Local_View = ({ selectedRegionData }) => {
     renderer.domElement.addEventListener('wheel', handleWheel);
     renderer.domElement.addEventListener('contextmenu', handleContextMenu);
 
-    // Animation loop
+    // Animation loop - ensure it always renders
     const animate = () => {
-      updateLighting();
-      renderer.render(scene, camera);
+      if (cameraRef.current && sceneRef.current && rendererRef.current) {
+        try {
+          updateLighting();
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        } catch (err) {
+          console.error('Local_View: Error in animation loop:', err);
+        }
+      }
       animationRef.current = requestAnimationFrame(animate);
     };
     animate();
+
+    // Initial render to ensure something is displayed
+    console.log('Local_View: Scene initialized, rendering initial frame');
+    console.log('Local_View: Scene children:', scene.children.length);
+    console.log('Local_View: Camera position:', camera.position);
+    console.log('Local_View: Camera distance:', cameraStateRef.current.distance);
+
+    if (cameraRef.current && sceneRef.current && rendererRef.current) {
+      try {
+        updateCameraPosition();
+        updateLighting();
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      } catch (err) {
+        console.error('Local_View: Error in initial render:', err);
+      }
+    }
 
     // Resize handler
     const handleResize = () => {
@@ -626,31 +748,122 @@ const Local_View = ({ selectedRegionData }) => {
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
-      
+
       // Clean up meshes
       voxelMeshesRef.current.forEach(mesh => {
         if (mesh.geometry) mesh.geometry.dispose();
         if (mesh.material) mesh.material.dispose();
       });
       voxelMeshesRef.current = [];
-      
+
       if (boundingBoxRef.current) {
         if (boundingBoxRef.current.geometry) boundingBoxRef.current.geometry.dispose();
         if (boundingBoxRef.current.material) boundingBoxRef.current.material.dispose();
       }
-      
+
       if (container && renderer.domElement) {
         container.removeChild(renderer.domElement);
       }
-    };
-  }, []);
 
-  // Update visualization when selected region data changes
+      // Clear refs
+      sceneRef.current = null;
+      cameraRef.current = null;
+      rendererRef.current = null;
+    };
+  }, [updateCameraPosition, updateLighting]);
+
+  // Combined effect to handle both selectedRegionData and channels changes
+  // This ensures Local_View always shows the exact same thing as Main_View
   useEffect(() => {
-    if (selectedRegionData) {
-      createLocalVisualization(selectedRegionData);
+    // Clear any pending updates
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+      updateTimeoutRef.current = null;
     }
-  }, [selectedRegionData]);
+
+    // If no selection, clear visualization
+    if (!selectedRegionData || !selectedRegionData.bounds) {
+      console.log('Local_View: No selected region data, clearing visualization');
+      if (sceneRef.current) {
+        voxelMeshesRef.current.forEach(mesh => {
+          sceneRef.current.remove(mesh);
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) mesh.material.dispose();
+        });
+        voxelMeshesRef.current = [];
+        setCellCount(0);
+      }
+      return;
+    }
+
+    // Determine which channels to use - ALWAYS prefer current channels if available
+    // Current channels have the latest filter settings that match Main_View
+    // Match current channels to selected channels by channelIndex to ensure we only show channels from the original selection
+    let channelsToUse = [];
+
+    if (channels && channels.length > 0 && selectedRegionData.channels && selectedRegionData.channels.length > 0) {
+      // Match current channels to selected channels by channelIndex
+      const selectedChannelIndices = new Set(selectedRegionData.channels.map(c => c.channelIndex));
+      console.log('Local_View: Selected channel indices:', Array.from(selectedChannelIndices));
+      console.log('Local_View: Current channel indices:', channels.map(c => c.channelIndex));
+
+      channelsToUse = channels.filter(c => selectedChannelIndices.has(c.channelIndex));
+      console.log(`Local_View: Matched ${channelsToUse.length} current channel(s) to selection`);
+
+      // Fallback to stored channels if no matches
+      if (channelsToUse.length === 0) {
+        console.warn('Local_View: No current channels matched, using stored channels');
+        channelsToUse = selectedRegionData.channels || [];
+      }
+    } else {
+      // Use stored channels if current channels not available
+      channelsToUse = (channels && channels.length > 0) ? channels : (selectedRegionData.channels || []);
+      console.log(`Local_View: Using ${channelsToUse.length} ${(channels && channels.length > 0) ? 'current' : 'stored'} channel(s)`);
+    }
+
+    if (!channelsToUse || channelsToUse.length === 0) {
+      console.log('Local_View: No channels available, waiting...');
+      return;
+    }
+
+    console.log('Local_View: Updating visualization');
+    console.log(`Local_View: Using ${channelsToUse.length} channel(s) - ${(channels && channels.length > 0) ? 'current' : 'stored'}`);
+    console.log('Local_View: SelectedRegionData:', selectedRegionData);
+    console.log('Local_View: Channels:', channelsToUse);
+
+    // Retry mechanism if scene isn't ready yet
+    const tryCreateVisualization = (retries = 10) => {
+      if (!sceneRef.current || !rendererRef.current || !cameraRef.current) {
+        if (retries > 0) {
+          console.warn(`Local_View: Scene/renderer not initialized yet, retrying... (${retries} retries left)`);
+          setTimeout(() => tryCreateVisualization(retries - 1), 200);
+          return;
+        } else {
+          console.error('Local_View: Scene/renderer not initialized after retries');
+          return;
+        }
+      }
+
+      console.log('Local_View: Creating visualization now...');
+      createLocalVisualization(selectedRegionData, channelsToUse).catch(error => {
+        console.error('Local_View: Error creating visualization:', error);
+        console.error('Local_View: Error stack:', error.stack);
+      });
+    };
+
+    // Small delay to ensure state is settled, then try to create visualization
+    updateTimeoutRef.current = setTimeout(() => {
+      tryCreateVisualization();
+    }, 100);
+
+    // Cleanup timeout on unmount or when dependencies change
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = null;
+      }
+    };
+  }, [selectedRegionData, channels]); // Watch both - this ensures updates when either changes
 
   // Close info modal when clicking outside
   useEffect(() => {
@@ -692,14 +905,14 @@ const Local_View = ({ selectedRegionData }) => {
           button.style.backgroundColor = '#555';
         }, 150);
       }
-      
+
       // Reset camera state
       cameraStateRef.current.rotation = { ...initialCameraStateRef.current.rotation };
       cameraStateRef.current.distance = initialCameraStateRef.current.distance;
       cameraStateRef.current.panOffset = { ...initialCameraStateRef.current.panOffset };
       updateCameraPosition();
       updateLighting();
-      
+
       console.log('Local_View: Camera reset to initial position');
     }
   };
@@ -707,19 +920,19 @@ const Local_View = ({ selectedRegionData }) => {
   // Calculate section depth and volume from selected region data
   const getSectionInfo = () => {
     if (!selectedRegionData || !selectedRegionData.bounds) return null;
-    
+
     const bounds = selectedRegionData.bounds;
     const widthVoxels = bounds.max.x - bounds.min.x + 1;
     const heightVoxels = bounds.max.y - bounds.min.y + 1;
     const depthVoxels = bounds.max.z - bounds.min.z + 1;
-    
+
     // Estimate physical size (assuming 1 µm per voxel, adjust based on your data)
     const voxelSize = 1; // µm per voxel (adjust as needed)
     const widthMicrons = widthVoxels * voxelSize;
     const heightMicrons = heightVoxels * voxelSize;
     const depthMicrons = depthVoxels * voxelSize;
     const volumeMicrons3 = widthMicrons * heightMicrons * depthMicrons;
-    
+
     return {
       width: Math.round(widthMicrons),
       height: Math.round(heightMicrons),
@@ -744,10 +957,10 @@ const Local_View = ({ selectedRegionData }) => {
       overflow: 'hidden',
       position: 'relative'
     }}>
-      <h3 style={{ 
-        marginTop: 0, 
-        marginBottom: '5px', 
-        fontSize: '14px', 
+      <h3 style={{
+        marginTop: 0,
+        marginBottom: '5px',
+        fontSize: '14px',
         color: 'white',
         position: 'absolute',
         top: '5px',
@@ -795,10 +1008,28 @@ const Local_View = ({ selectedRegionData }) => {
           </button>
         )}
       </h3>
-      
+
+      {/* Placeholder when no selection */}
+      {!selectedRegionData && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '#666',
+          fontSize: '12px',
+          textAlign: 'center',
+          zIndex: 50,
+          pointerEvents: 'none'
+        }}>
+          <div>No selection made</div>
+          <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
+        </div>
+      )}
+
       {/* Info Modal */}
       {selectedRegionData && sectionInfo && showInfoModal && (
-        <div 
+        <div
           id="info-modal"
           style={{
             position: 'absolute',
@@ -816,9 +1047,9 @@ const Local_View = ({ selectedRegionData }) => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ 
-            fontWeight: 'bold', 
-            marginBottom: '8px', 
+          <div style={{
+            fontWeight: 'bold',
+            marginBottom: '8px',
             fontSize: '13px',
             color: '#fff',
             borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
@@ -852,7 +1083,7 @@ const Local_View = ({ selectedRegionData }) => {
           </div>
         </div>
       )}
-      
+
       {/* Reset View Button */}
       {selectedRegionData && (
         <button
@@ -885,7 +1116,7 @@ const Local_View = ({ selectedRegionData }) => {
           Reset View
         </button>
       )}
-      
+
       {/* Scale Bar */}
       <div style={{
         position: 'absolute',
@@ -909,16 +1140,16 @@ const Local_View = ({ selectedRegionData }) => {
           10 µm
         </div>
       </div>
-      
-      <div 
-        ref={mountRef} 
+
+      <div
+        ref={mountRef}
         style={{
           width: '100%',
           height: '100%',
           position: 'absolute',
           top: 0,
           left: 0
-        }} 
+        }}
       />
     </div>
   );
