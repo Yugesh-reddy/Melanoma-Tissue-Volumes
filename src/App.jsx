@@ -220,7 +220,7 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Graph_Pannel selectedRegionData={selectedRegionData} channels={channels} />
+              <Graph_Pannel selectedRegionData={selectedRegionData} channels={channels} selectedRegions={selectedRegions} />
             </div>
             {/* Direction View - 33.3% width */}
             <div style={{
