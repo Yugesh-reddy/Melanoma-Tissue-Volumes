@@ -501,17 +501,30 @@ const Direction_view = ({ channels = [] }) => {
         boxSizing: 'border-box'
       }}
     >
-      <h3
-        style={{
-          margin: '8px',
-          fontSize: '14px',
-          color: 'white',
-          fontWeight: 500,
-          flexShrink: 0
-        }}
-      >
-        Direction View
-      </h3>
+      <div style={{
+        margin: '8px',
+        flexShrink: 0
+      }}>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: '14px',
+            color: 'white',
+            fontWeight: 500
+          }}
+        >
+          Direction View
+        </h3>
+        {/* One-line explanation of arrows */}
+        <div style={{
+          fontSize: '11px',
+          color: 'rgba(255, 255, 255, 0.6)',
+          marginTop: '4px',
+          fontStyle: 'italic'
+        }}>
+          Arrows show principal direction of each channel's high-intensity regions
+        </div>
+      </div>
       <div
         ref={mountRef}
         style={{
