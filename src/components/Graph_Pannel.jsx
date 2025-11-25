@@ -914,29 +914,28 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
           Graph Panel
         </h3>
 
-        {/* Toggle buttons */}
+        {/* Toggle buttons with icons and labels */}
         <div style={{
           display: 'flex',
           gap: '4px',
-          padding: '2px',
+          padding: '3px',
           background: 'rgba(255, 255, 255, 0.1)',
           borderRadius: '4px'
         }}>
           <button
             onClick={() => setGraphType('bar')}
             style={{
-              width: '24px',
-              height: '24px',
-              padding: '4px',
+              padding: '4px 8px',
               background: graphType === 'bar' ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
               border: 'none',
               borderRadius: '3px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              gap: '4px',
+              transition: 'all 0.2s'
             }}
-            title="Bar Chart"
+            title="Bar Chart - Cell count distribution"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <rect x="2" y="12" width="2" height="2" fill={graphType === 'bar' ? '#4ade80' : '#fff'} opacity={graphType === 'bar' ? 1 : 0.7} />
@@ -944,23 +943,27 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
               <rect x="8" y="4" width="2" height="10" fill={graphType === 'bar' ? '#4ade80' : '#fff'} opacity={graphType === 'bar' ? 1 : 0.7} />
               <rect x="11" y="6" width="2" height="8" fill={graphType === 'bar' ? '#4ade80' : '#fff'} opacity={graphType === 'bar' ? 1 : 0.7} />
             </svg>
+            <span style={{ 
+              fontSize: '11px', 
+              color: graphType === 'bar' ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              fontWeight: graphType === 'bar' ? '600' : '400'
+            }}>Bar</span>
           </button>
 
           <button
             onClick={() => setGraphType('heatmap')}
             style={{
-              width: '24px',
-              height: '24px',
-              padding: '4px',
+              padding: '4px 8px',
               background: graphType === 'heatmap' ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
               border: 'none',
               borderRadius: '3px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              gap: '4px',
+              transition: 'all 0.2s'
             }}
-            title="Heatmap"
+            title="Heatmap - Biomarker co-expression correlation"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <rect x="2" y="2" width="3" height="3" fill={graphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={graphType === 'heatmap' ? 1 : 0.7} />
@@ -973,23 +976,27 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
               <rect x="6" y="10" width="3" height="3" fill={graphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={graphType === 'heatmap' ? 1 : 0.7} />
               <rect x="10" y="10" width="3" height="3" fill={graphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={graphType === 'heatmap' ? 1 : 0.7} />
             </svg>
+            <span style={{ 
+              fontSize: '11px', 
+              color: graphType === 'heatmap' ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              fontWeight: graphType === 'heatmap' ? '600' : '400'
+            }}>Heatmap</span>
           </button>
 
           <button
             onClick={() => setGraphType('violin')}
             style={{
-              width: '24px',
-              height: '24px',
-              padding: '4px',
+              padding: '4px 8px',
               background: graphType === 'violin' ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
               border: 'none',
               borderRadius: '3px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              gap: '4px',
+              transition: 'all 0.2s'
             }}
-            title="Violin Plot"
+            title="Violin Plot - Intensity distribution shapes"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M8 2 L6 4 L5 6 L5 10 L6 12 L8 14 L10 12 L11 10 L11 6 L10 4 Z"
@@ -997,6 +1004,11 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
                 opacity={graphType === 'violin' ? 1 : 0.7} />
               <line x1="8" y1="2" x2="8" y2="14" stroke={graphType === 'violin' ? '#4ade80' : '#fff'} strokeWidth="1.5" opacity={graphType === 'violin' ? 1 : 0.7} />
             </svg>
+            <span style={{ 
+              fontSize: '11px', 
+              color: graphType === 'violin' ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              fontWeight: graphType === 'violin' ? '600' : '400'
+            }}>Violin</span>
           </button>
         </div>
       </div>

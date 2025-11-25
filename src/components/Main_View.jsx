@@ -368,6 +368,16 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     renderScene();
   }, [createChannelVisualization, getDesiredSampling, renderScene]);
 
+  // Reset camera to initial state
+  const resetCameraView = useCallback(() => {
+    cameraStateRef.current = { ...CAMERA_INITIAL_STATE };
+    if (cameraRef.current) {
+      updateCameraPosition();
+      updateChannelLOD();
+    }
+    console.log('Main_View: Camera reset to initial state');
+  }, [updateCameraPosition, updateChannelLOD]);
+
   const handleMovement = useCallback(() => {
     const camera = cameraRef.current;
     if (!camera) return;
@@ -1020,9 +1030,33 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
             }
           }
         } else {
+          // Zoom toward mouse position instead of just center
           const state = cameraStateRef.current;
-          state.distance *= 1 + e.deltaY * 0.001;
+          const zoomFactor = 1 + e.deltaY * 0.001;
+          const oldDistance = state.distance;
+          state.distance *= zoomFactor;
           state.distance = clamp(state.distance, 0.1, 20);
+          
+          // Calculate zoom toward mouse position
+          if (cameraRef.current && rendererRef.current) {
+            const rect = rendererRef.current.domElement.getBoundingClientRect();
+            const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Calculate world position under mouse
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), cameraRef.current);
+            
+            // Calculate the offset to zoom toward mouse position
+            const zoomDelta = (oldDistance - state.distance) * 0.3;
+            const direction = raycaster.ray.direction.clone().normalize();
+            
+            // Apply pan offset toward mouse direction
+            state.panOffset.x += direction.x * zoomDelta;
+            state.panOffset.y += direction.y * zoomDelta;
+            state.panOffset.z += direction.z * zoomDelta;
+          }
+          
           updateCameraPosition();
           updateChannelLOD();
         }
@@ -1391,7 +1425,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         overflow: 'hidden'
       }} />
 
-      {/* Selection Mode Toggle Button */}
+      {/* Selection Mode Toggle Button - Top Right */}
       <button
         onClick={(e) => {
           e.preventDefault();
@@ -1472,11 +1506,63 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         {selectionMode ? '✓ 3D Selection' : '3D Selection'}
       </button>
 
+      {/* Reset View Button - Bottom Right */}
+      <button
+        onClick={resetCameraView}
+        style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '10px',
+          zIndex: 1000,
+          padding: '8px 14px',
+          backgroundColor: '#555',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          fontWeight: '500',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+          transition: 'background-color 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}
+        onMouseEnter={(e) => e.target.style.backgroundColor = '#666'}
+        onMouseLeave={(e) => e.target.style.backgroundColor = '#555'}
+        title="Reset camera to initial view"
+      >
+        ↺ Reset View
+      </button>
+
+      {/* Selection Box Help Tooltip - shown when selection mode is active */}
+      {selectionMode && !isSelecting && !cuboidDimensions && (
+        <div style={{
+          position: 'absolute',
+          top: '60px',
+          right: '10px',
+          zIndex: 1000,
+          backgroundColor: 'rgba(45, 127, 249, 0.9)',
+          color: 'white',
+          padding: '10px 14px',
+          borderRadius: '6px',
+          fontSize: '12px',
+          maxWidth: '220px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          lineHeight: '1.5'
+        }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>📦 How to Select:</div>
+          <div>• <strong>Click & drag</strong> to draw selection box</div>
+          <div>• <strong>Scroll</strong> while drawing to adjust Z-depth</div>
+          <div>• Release to confirm selection</div>
+        </div>
+      )}
+
       {/* Cuboid Dimensions Display */}
       {selectionMode && cuboidDimensions && (
         <div style={{
           position: 'absolute',
-          top: '50px',
+          top: '60px',
           right: '10px',
           zIndex: 1000,
           backgroundColor: 'rgba(0, 0, 0, 0.8)',
