@@ -21,8 +21,8 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
   useEffect(() => {
     presetChannelsRef.current = presetChannels;
   }, [presetChannels]);
-  
-  
+
+
   const [channelRanges, setChannelRanges] = useState({}); // Store data ranges for each channel
   const [pendingThresholds, setPendingThresholds] = useState({});
 
@@ -211,14 +211,14 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
               dataRange: range,
               thresholdMin:
                 channel.thresholdMin === undefined ||
-                channel.thresholdMin < range[0] ||
-                channel.thresholdMin > range[1]
+                  channel.thresholdMin < range[0] ||
+                  channel.thresholdMin > range[1]
                   ? defaultMin
                   : channel.thresholdMin,
               thresholdMax:
                 channel.thresholdMax === undefined ||
-                channel.thresholdMax < range[0] ||
-                channel.thresholdMax > range[1]
+                  channel.thresholdMax < range[0] ||
+                  channel.thresholdMax > range[1]
                   ? defaultMax
                   : channel.thresholdMax
             };
@@ -233,7 +233,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
       cancelled = true;
     };
   }, [channelIndexKey]);
-  
+
   // Notify parent on mount and whenever channels change
   useEffect(() => {
     if (applyingPresetRef.current) {
@@ -251,7 +251,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
       .filter((id) => id !== null);
     const maxId = numericIds.length > 0 ? Math.max(...numericIds) : -1;
     const newId = maxId + 1;
-    
+
     // Try to load data range for channel 0
     let dataRange = [0, 65535];
     const paths = [
@@ -260,7 +260,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
       `./visualization_data/channel_0_metadata.json`,
       `visualization_data/channel_0_metadata.json`
     ];
-    
+
     for (const path of paths) {
       try {
         const response = await fetch(path);
@@ -273,21 +273,21 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
         continue;
       }
     }
-    
+
     // Set threshold to 10%-90% of range
     const rangeSpan = dataRange[1] - dataRange[0];
     const defaultMin = Math.round(dataRange[0] + rangeSpan * 0.1);
     const defaultMax = Math.round(dataRange[0] + rangeSpan * 0.9);
-    
+
     const newChannel = {
       id: newId,
       channelIndex: 0,
-      color: '#ffffff',
+      color: '#00ff88',  // Default to bright green - much more visible than white
       thresholdMin: defaultMin,
       thresholdMax: defaultMax,
       dataRange: dataRange,
       opacity: 1.0,
-      visible: false  // Start as unchecked - user will check when ready to visualize
+      visible: true  // Start as checked/visible by default
     };
     const updatedChannels = [...channels, newChannel];
     setChannels(updatedChannels);
@@ -320,7 +320,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
     const updatedChannels = channels.map(channel => {
       if (channel.id === id) {
         const updated = { ...channel, [field]: value };
-        
+
         // If channel index changed, update data range
         if (field === 'channelIndex') {
           const newIndex = parseInt(value);
@@ -331,12 +331,12 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
           updated.thresholdMin = Math.round(range[0] + rangeSpan * 0.1);
           updated.thresholdMax = Math.round(range[0] + rangeSpan * 0.9);
         }
-        
+
         // Convert threshold and opacity to numbers
         if (field === 'opacity') {
           updated[field] = parseFloat(value);
         }
-        
+
         // Ensure thresholdMin <= thresholdMax
         if (field === 'thresholdMin' && updated.thresholdMin > updated.thresholdMax) {
           updated.thresholdMax = updated.thresholdMin;
@@ -344,14 +344,14 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
         if (field === 'thresholdMax' && updated.thresholdMax < updated.thresholdMin) {
           updated.thresholdMin = updated.thresholdMax;
         }
-        
+
         // Clamp thresholds to data range
         const dataRange = updated.dataRange || [0, 65535];
         if (updated.thresholdMin < dataRange[0]) updated.thresholdMin = dataRange[0];
         if (updated.thresholdMin > dataRange[1]) updated.thresholdMin = dataRange[1];
         if (updated.thresholdMax < dataRange[0]) updated.thresholdMax = dataRange[0];
         if (updated.thresholdMax > dataRange[1]) updated.thresholdMax = dataRange[1];
-        
+
         if (field === 'channelIndex') {
           setPendingThresholds((prevPending) => ({
             ...prevPending,
@@ -361,7 +361,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
             }
           }));
         }
-        
+
         return updated;
       }
       return channel;
@@ -457,6 +457,9 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
     } : { r: 255, g: 255, b: 255 };
   };
 
+  // State for showing help tooltip
+  const [showHelp, setShowHelp] = useState(false);
+
   return (
     <div style={{
       height: '100%',
@@ -471,25 +474,78 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
       overflow: 'hidden'
     }}>
       {/* Header */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: '16px',
         paddingBottom: '12px',
         borderBottom: '1px solid #444'
       }}>
-        <h3 style={{ margin: 0, fontSize: '16px', color: 'white', fontWeight: '500' }}>
-          Image
+        <h3 style={{ margin: 0, fontSize: '16px', color: 'white', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          Channel Selection
+          {/* Help Button */}
+          <button
+            onClick={() => setShowHelp(!showHelp)}
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              borderRadius: '50%',
+              width: '18px',
+              height: '18px',
+              cursor: 'pointer',
+              color: '#fff',
+              fontSize: '11px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+              e.target.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'transparent';
+              e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            }}
+            title="Show channel selection help"
+          >
+            ?
+          </button>
         </h3>
       </div>
-      
+
+      {/* Help Panel */}
+      {showHelp && (
+        <div style={{
+          backgroundColor: 'rgba(45, 127, 249, 0.15)',
+          border: '1px solid rgba(45, 127, 249, 0.4)',
+          borderRadius: '6px',
+          padding: '10px 12px',
+          marginBottom: '12px',
+          fontSize: '11px',
+          lineHeight: '1.5',
+          color: '#e0e0e0'
+        }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#fff' }}>Quick Guide:</div>
+          <ul style={{ margin: 0, paddingLeft: '16px' }}>
+            <li><strong>☑ Checkbox:</strong> Toggle channel visibility on/off</li>
+            <li><strong>🎨 Color Square:</strong> Click to change channel display color</li>
+            <li><strong>📊 Dropdown:</strong> Select different biomarker channels</li>
+            <li><strong>🎚️ Slider:</strong> Adjust min/max intensity thresholds</li>
+            <li><strong>Apply Filter:</strong> Update visualization with new thresholds</li>
+          </ul>
+        </div>
+      )}
+
       {/* Channel List */}
       <div style={{ flex: 1, overflowY: 'auto', marginBottom: '12px' }}>
         {channels.map((channel, index) => {
           const rgb = hexToRgb(channel.color);
           const checkboxColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-          
+
           return (
             <div
               key={channel.id}
@@ -596,190 +652,190 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                 }}
               />
 
-            {/* Threshold Range Slider (Dual Range with Value Labels) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '160px', flex: 1, position: 'relative' }}>
-              {(() => {
-                const dataRange = channel.dataRange || [0, 65535];
-                const rangeMin = dataRange[0];
-                const rangeMax = dataRange[1];
-                const pending = pendingThresholds[channel.id] || {
-                  thresholdMin: channel.thresholdMin ?? rangeMin,
-                  thresholdMax: channel.thresholdMax ?? rangeMax
-                };
-                const thresholdMin = pending.thresholdMin;
-                const thresholdMax = pending.thresholdMax;
-                const minPercent = ((thresholdMin - rangeMin) / (rangeMax - rangeMin)) * 100;
-                const maxPercent = ((thresholdMax - rangeMin) / (rangeMax - rangeMin)) * 100;
-                
-                return (
-                  <>
-                    {/* Value labels above handles */}
-                    <div style={{ position: 'relative', width: '100%', height: '20px', marginBottom: '4px' }}>
-                      {/* Min value label */}
-                      <div style={{
-                        position: 'absolute',
-                        left: `${minPercent}%`,
-                        transform: 'translateX(-50%)',
-                        top: '0px',
-                        backgroundColor: channel.color,
-                        color: 'white',
-                        padding: '2px 6px',
-                        borderRadius: '10px',
-                        fontSize: '10px',
-                        fontWeight: 'bold',
-                        whiteSpace: 'nowrap',
-                        pointerEvents: 'none',
-                        zIndex: 10,
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                      }}>
-                        {thresholdMin.toLocaleString()}
+              {/* Threshold Range Slider (Dual Range with Value Labels) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '160px', flex: 1, position: 'relative' }}>
+                {(() => {
+                  const dataRange = channel.dataRange || [0, 65535];
+                  const rangeMin = dataRange[0];
+                  const rangeMax = dataRange[1];
+                  const pending = pendingThresholds[channel.id] || {
+                    thresholdMin: channel.thresholdMin ?? rangeMin,
+                    thresholdMax: channel.thresholdMax ?? rangeMax
+                  };
+                  const thresholdMin = pending.thresholdMin;
+                  const thresholdMax = pending.thresholdMax;
+                  const minPercent = ((thresholdMin - rangeMin) / (rangeMax - rangeMin)) * 100;
+                  const maxPercent = ((thresholdMax - rangeMin) / (rangeMax - rangeMin)) * 100;
+
+                  return (
+                    <>
+                      {/* Value labels above handles */}
+                      <div style={{ position: 'relative', width: '100%', height: '20px', marginBottom: '4px' }}>
+                        {/* Min value label */}
+                        <div style={{
+                          position: 'absolute',
+                          left: `${minPercent}%`,
+                          transform: 'translateX(-50%)',
+                          top: '0px',
+                          backgroundColor: channel.color,
+                          color: 'white',
+                          padding: '2px 6px',
+                          borderRadius: '10px',
+                          fontSize: '10px',
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          pointerEvents: 'none',
+                          zIndex: 10,
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                        }}>
+                          {thresholdMin.toLocaleString()}
+                        </div>
+                        {/* Max value label */}
+                        <div style={{
+                          position: 'absolute',
+                          left: `${maxPercent}%`,
+                          transform: 'translateX(-50%)',
+                          top: '0px',
+                          backgroundColor: channel.color,
+                          color: 'white',
+                          padding: '2px 6px',
+                          borderRadius: '10px',
+                          fontSize: '10px',
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          pointerEvents: 'none',
+                          zIndex: 10,
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                        }}>
+                          {thresholdMax.toLocaleString()}
+                        </div>
                       </div>
-                      {/* Max value label */}
-                      <div style={{
-                        position: 'absolute',
-                        left: `${maxPercent}%`,
-                        transform: 'translateX(-50%)',
-                        top: '0px',
-                        backgroundColor: channel.color,
-                        color: 'white',
-                        padding: '2px 6px',
-                        borderRadius: '10px',
-                        fontSize: '10px',
-                        fontWeight: 'bold',
-                        whiteSpace: 'nowrap',
-                        pointerEvents: 'none',
-                        zIndex: 10,
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                      }}>
-                        {thresholdMax.toLocaleString()}
-                      </div>
-                    </div>
-                    
-                    {/* Slider container */}
-                    <div style={{ position: 'relative', width: '100%', height: '10px', display: 'flex', alignItems: 'center', flex: 1 }}>
-                      {/* Background track */}
-                      <div style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '5px',
-                        backgroundColor: '#555',
-                        borderRadius: '3px',
-                        zIndex: 0
-                      }} />
-                      {/* Active range indicator - colored with channel color */}
-                      <div style={{
-                        position: 'absolute',
-                        left: `${minPercent}%`,
-                        width: `${maxPercent - minPercent}%`,
-                        height: '5px',
-                        backgroundColor: channel.color,
-                        borderRadius: '3px',
-                        zIndex: 0,
-                        pointerEvents: 'none',
-                        opacity: 0.8
-                      }} />
-                      
-                      {/* Min Slider Handle */}
-                      <input
-                        type="range"
-                        min={rangeMin}
-                        max={rangeMax}
-                        step={Math.max(1, Math.floor((rangeMax - rangeMin) / 1000))}
-                        value={thresholdMin}
-                        onChange={(e) => {
-                          const value = Math.min(parseInt(e.target.value, 10), thresholdMax);
-                          handlePendingThresholdChange(channel.id, 'thresholdMin', value);
-                        }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          // Bring min slider to front when dragging
-                          e.currentTarget.style.zIndex = '10';
-                          // Find max slider and put it behind
-                          const container = e.currentTarget.closest('div');
-                          if (container) {
-                            const maxSlider = container.querySelector('input[type="range"]:last-of-type');
-                            if (maxSlider && maxSlider !== e.currentTarget) {
-                              maxSlider.style.zIndex = '9';
-                            }
-                          }
-                        }}
-                        onMouseUp={(e) => {
-                          // Reset z-index based on position
-                          const minPos = (thresholdMin - rangeMin) / (rangeMax - rangeMin);
-                          const maxPos = (thresholdMax - rangeMin) / (rangeMax - rangeMin);
-                          e.currentTarget.style.zIndex = minPos <= maxPos ? '4' : '5';
-                        }}
-                        style={{
+
+                      {/* Slider container */}
+                      <div style={{ position: 'relative', width: '100%', height: '10px', display: 'flex', alignItems: 'center', flex: 1 }}>
+                        {/* Background track */}
+                        <div style={{
                           position: 'absolute',
                           width: '100%',
-                          height: '10px',
-                          margin: 0,
-                          padding: 0,
-                          top: '-2px',
-                          zIndex: minPercent <= maxPercent ? '4' : '5',
-                          pointerEvents: 'auto',
-                          background: 'transparent',
-                          WebkitAppearance: 'none',
-                          appearance: 'none',
-                          cursor: 'pointer',
-                          outline: 'none',
-                          touchAction: 'none'
-                        }}
-                      />
-                      
-                      {/* Max Slider Handle */}
-                      <input
-                        type="range"
-                        min={rangeMin}
-                        max={rangeMax}
-                        step={Math.max(1, Math.floor((rangeMax - rangeMin) / 1000))}
-                        value={thresholdMax}
-                        onChange={(e) => {
-                          const value = Math.max(parseInt(e.target.value, 10), thresholdMin);
-                          handlePendingThresholdChange(channel.id, 'thresholdMax', value);
-                        }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          // Bring max slider to front when dragging
-                          e.currentTarget.style.zIndex = '10';
-                          // Find min slider and put it behind
-                          const container = e.currentTarget.closest('div');
-                          if (container) {
-                            const minSlider = container.querySelector('input[type="range"]:first-of-type');
-                            if (minSlider && minSlider !== e.currentTarget) {
-                              minSlider.style.zIndex = '9';
-                            }
-                          }
-                        }}
-                        onMouseUp={(e) => {
-                          // Reset z-index based on position
-                          const minPos = (thresholdMin - rangeMin) / (rangeMax - rangeMin);
-                          const maxPos = (thresholdMax - rangeMin) / (rangeMax - rangeMin);
-                          e.currentTarget.style.zIndex = maxPos >= minPos ? '5' : '4';
-                        }}
-                        style={{
+                          height: '5px',
+                          backgroundColor: '#555',
+                          borderRadius: '3px',
+                          zIndex: 0
+                        }} />
+                        {/* Active range indicator - colored with channel color */}
+                        <div style={{
                           position: 'absolute',
-                          width: '100%',
-                          height: '10px',
-                          margin: 0,
-                          padding: 0,
-                          top: '-2px',
-                          zIndex: maxPercent >= minPercent ? '5' : '4',
-                          pointerEvents: 'auto',
-                          background: 'transparent',
-                          WebkitAppearance: 'none',
-                          appearance: 'none',
-                          cursor: 'pointer',
-                          outline: 'none',
-                          touchAction: 'none'
-                        }}
-                      />
-                    </div>
-                  </>
-                );
-              })()}
-              <div />
-            </div>
+                          left: `${minPercent}%`,
+                          width: `${maxPercent - minPercent}%`,
+                          height: '5px',
+                          backgroundColor: channel.color,
+                          borderRadius: '3px',
+                          zIndex: 0,
+                          pointerEvents: 'none',
+                          opacity: 0.8
+                        }} />
+
+                        {/* Min Slider Handle */}
+                        <input
+                          type="range"
+                          min={rangeMin}
+                          max={rangeMax}
+                          step={Math.max(1, Math.floor((rangeMax - rangeMin) / 1000))}
+                          value={thresholdMin}
+                          onChange={(e) => {
+                            const value = Math.min(parseInt(e.target.value, 10), thresholdMax);
+                            handlePendingThresholdChange(channel.id, 'thresholdMin', value);
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            // Bring min slider to front when dragging
+                            e.currentTarget.style.zIndex = '10';
+                            // Find max slider and put it behind
+                            const container = e.currentTarget.closest('div');
+                            if (container) {
+                              const maxSlider = container.querySelector('input[type="range"]:last-of-type');
+                              if (maxSlider && maxSlider !== e.currentTarget) {
+                                maxSlider.style.zIndex = '9';
+                              }
+                            }
+                          }}
+                          onMouseUp={(e) => {
+                            // Reset z-index based on position
+                            const minPos = (thresholdMin - rangeMin) / (rangeMax - rangeMin);
+                            const maxPos = (thresholdMax - rangeMin) / (rangeMax - rangeMin);
+                            e.currentTarget.style.zIndex = minPos <= maxPos ? '4' : '5';
+                          }}
+                          style={{
+                            position: 'absolute',
+                            width: '100%',
+                            height: '10px',
+                            margin: 0,
+                            padding: 0,
+                            top: '-2px',
+                            zIndex: minPercent <= maxPercent ? '4' : '5',
+                            pointerEvents: 'auto',
+                            background: 'transparent',
+                            WebkitAppearance: 'none',
+                            appearance: 'none',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            touchAction: 'none'
+                          }}
+                        />
+
+                        {/* Max Slider Handle */}
+                        <input
+                          type="range"
+                          min={rangeMin}
+                          max={rangeMax}
+                          step={Math.max(1, Math.floor((rangeMax - rangeMin) / 1000))}
+                          value={thresholdMax}
+                          onChange={(e) => {
+                            const value = Math.max(parseInt(e.target.value, 10), thresholdMin);
+                            handlePendingThresholdChange(channel.id, 'thresholdMax', value);
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            // Bring max slider to front when dragging
+                            e.currentTarget.style.zIndex = '10';
+                            // Find min slider and put it behind
+                            const container = e.currentTarget.closest('div');
+                            if (container) {
+                              const minSlider = container.querySelector('input[type="range"]:first-of-type');
+                              if (minSlider && minSlider !== e.currentTarget) {
+                                minSlider.style.zIndex = '9';
+                              }
+                            }
+                          }}
+                          onMouseUp={(e) => {
+                            // Reset z-index based on position
+                            const minPos = (thresholdMin - rangeMin) / (rangeMax - rangeMin);
+                            const maxPos = (thresholdMax - rangeMin) / (rangeMax - rangeMin);
+                            e.currentTarget.style.zIndex = maxPos >= minPos ? '5' : '4';
+                          }}
+                          style={{
+                            position: 'absolute',
+                            width: '100%',
+                            height: '10px',
+                            margin: 0,
+                            padding: 0,
+                            top: '-2px',
+                            zIndex: maxPercent >= minPercent ? '5' : '4',
+                            pointerEvents: 'auto',
+                            background: 'transparent',
+                            WebkitAppearance: 'none',
+                            appearance: 'none',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            touchAction: 'none'
+                          }}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+                <div />
+              </div>
 
               {/* More Options (Vertical Ellipsis) with Delete */}
               <div style={{ position: 'relative' }}>
