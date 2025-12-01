@@ -517,26 +517,135 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
         </h3>
       </div>
 
-      {/* Help Panel */}
+      {/* Help Panel - Black & Green Theme */}
       {showHelp && (
         <div style={{
-          backgroundColor: 'rgba(45, 127, 249, 0.15)',
-          border: '1px solid rgba(45, 127, 249, 0.4)',
-          borderRadius: '6px',
-          padding: '10px 12px',
-          marginBottom: '12px',
-          fontSize: '11px',
-          lineHeight: '1.5',
-          color: '#e0e0e0'
+          background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 40, 20, 0.95) 100%)',
+          border: '1px solid rgba(74, 222, 128, 0.5)',
+          borderRadius: '12px',
+          padding: '16px 18px',
+          marginBottom: '16px',
+          boxShadow: '0 4px 20px rgba(74, 222, 128, 0.15), inset 0 1px 0 rgba(74, 222, 128, 0.1)',
+          backdropFilter: 'blur(10px)'
         }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#fff' }}>Quick Guide:</div>
-          <ul style={{ margin: 0, paddingLeft: '16px' }}>
-            <li><strong>☑ Checkbox:</strong> Toggle channel visibility on/off</li>
-            <li><strong>🎨 Color Square:</strong> Click to change channel display color</li>
-            <li><strong>📊 Dropdown:</strong> Select different biomarker channels</li>
-            <li><strong>🎚️ Slider:</strong> Adjust min/max intensity thresholds</li>
-            <li><strong>Apply Filter:</strong> Update visualization with new thresholds</li>
-          </ul>
+          {/* Header */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '10px',
+            marginBottom: '16px',
+            paddingBottom: '12px',
+            borderBottom: '1px solid rgba(74, 222, 128, 0.3)'
+          }}>
+            <span style={{ fontSize: '24px' }}>📖</span>
+            <span style={{ 
+              fontSize: '18px', 
+              fontWeight: '700', 
+              color: '#4ade80',
+              letterSpacing: '0.5px'
+            }}>Quick Guide</span>
+          </div>
+
+          {/* Guide Items */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Checkbox */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              <span style={{ 
+                fontSize: '28px', 
+                lineHeight: '1',
+                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
+              }}>☑️</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
+                  Checkbox
+                </div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
+                  Toggle channel visibility on/off
+                </div>
+              </div>
+            </div>
+
+            {/* Color Square */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              <span style={{ 
+                fontSize: '28px', 
+                lineHeight: '1',
+                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
+              }}>🎨</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
+                  Color Square
+                </div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
+                  Click to change channel display color
+                </div>
+              </div>
+            </div>
+
+            {/* Dropdown */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              <span style={{ 
+                fontSize: '28px', 
+                lineHeight: '1',
+                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
+              }}>📊</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
+                  Dropdown
+                </div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
+                  Select different biomarker channels
+                </div>
+              </div>
+            </div>
+
+            {/* Slider */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              <span style={{ 
+                fontSize: '28px', 
+                lineHeight: '1',
+                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
+              }}>🎚️</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
+                  Slider
+                </div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
+                  Adjust min/max intensity thresholds
+                </div>
+              </div>
+            </div>
+
+            {/* Apply Filter */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              <span style={{ 
+                fontSize: '28px', 
+                lineHeight: '1',
+                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
+              }}>✨</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
+                  Apply Filter
+                </div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
+                  Update visualization with new thresholds
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Close hint */}
+          <div style={{ 
+            marginTop: '14px', 
+            paddingTop: '12px',
+            borderTop: '1px solid rgba(74, 222, 128, 0.2)',
+            textAlign: 'center',
+            fontSize: '12px',
+            color: 'rgba(74, 222, 128, 0.6)',
+            fontStyle: 'italic'
+          }}>
+            Click <strong style={{ color: '#4ade80' }}>?</strong> to close this guide
+          </div>
         </div>
       )}
 

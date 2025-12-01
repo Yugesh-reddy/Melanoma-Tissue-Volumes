@@ -1645,26 +1645,43 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         ↺ Reset View
       </button>
 
-      {/* Selection Box Help Tooltip - shown when selection mode is active */}
+      {/* Selection Box Help Tooltip - Black & Green Theme */}
       {selectionMode && !isSelecting && !cuboidDimensions && (
         <div style={{
           position: 'absolute',
           top: '60px',
           right: '10px',
           zIndex: 1000,
-          backgroundColor: 'rgba(45, 127, 249, 0.9)',
+          background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 40, 20, 0.95) 100%)',
+          border: '1px solid rgba(74, 222, 128, 0.5)',
           color: 'white',
-          padding: '10px 14px',
-          borderRadius: '6px',
-          fontSize: '12px',
-          maxWidth: '220px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          lineHeight: '1.5'
+          padding: '14px 16px',
+          borderRadius: '10px',
+          fontSize: '13px',
+          maxWidth: '240px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5), 0 0 20px rgba(74, 222, 128, 0.1)',
+          lineHeight: '1.6'
         }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>📦 How to Select:</div>
-          <div>• <strong>Click & drag</strong> to draw selection box</div>
-          <div>• <strong>Scroll</strong> while drawing to adjust Z-depth</div>
-          <div>• Release to confirm selection</div>
+          <div style={{ 
+            fontWeight: 'bold', 
+            marginBottom: '10px', 
+            fontSize: '15px',
+            color: '#4ade80',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span>📦</span> How to Select:
+          </div>
+          <div style={{ marginBottom: '6px' }}>
+            <span style={{ color: '#4ade80' }}>•</span> <strong>Click & drag</strong> to draw selection box
+          </div>
+          <div style={{ marginBottom: '6px' }}>
+            <span style={{ color: '#4ade80' }}>•</span> <strong>Scroll</strong> while drawing to adjust Z-depth
+          </div>
+          <div>
+            <span style={{ color: '#4ade80' }}>•</span> Release to confirm selection
+          </div>
         </div>
       )}
 
