@@ -368,15 +368,67 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     renderScene();
   }, [createChannelVisualization, getDesiredSampling, renderScene]);
 
-  // Reset camera to initial state
+  // Clear selection helper function
+  const clearSelection = useCallback(() => {
+    // Remove wireframe from scene
+    if (cuboidWireframeRef.current && sceneRef.current) {
+      try {
+        if (sceneRef.current.children.includes(cuboidWireframeRef.current)) {
+          sceneRef.current.remove(cuboidWireframeRef.current);
+        }
+        if (cuboidWireframeRef.current.geometry) {
+          cuboidWireframeRef.current.geometry.dispose();
+        }
+        if (cuboidWireframeRef.current.material) {
+          cuboidWireframeRef.current.material.dispose();
+        }
+      } catch (err) {
+        console.error('Main_View: Error clearing wireframe:', err);
+      }
+      cuboidWireframeRef.current = null;
+    }
+    
+    // Clear all selection state
+    cuboidRef.current = null;
+    currentSelectionBoundsRef.current = null;
+    setCuboidCenter(null);
+    setCuboidSize(null);
+    setSelectionMode(false);
+    setIsSelecting(false);
+    setSelectionStart(null);
+    setSelectionEnd(null);
+    
+    // Notify parent that selection is cleared
+    if (onSelectionChange) {
+      onSelectionChange(null);
+    }
+    
+    console.log('Main_View: Selection cleared');
+  }, [onSelectionChange]);
+
+  // Reset camera to initial state AND clear selection
   const resetCameraView = useCallback(() => {
-    cameraStateRef.current = { ...CAMERA_INITIAL_STATE };
+    // Reset camera state
+    cameraStateRef.current = { 
+      rotation: { x: 0, y: Math.PI },
+      distance: 0.75,
+      panOffset: { x: 0, y: 0, z: 0 }
+    };
+    
+    // Clear the selection
+    clearSelection();
+    
+    // Update camera position
     if (cameraRef.current) {
       updateCameraPosition();
       updateChannelLOD();
     }
-    console.log('Main_View: Camera reset to initial state');
-  }, [updateCameraPosition, updateChannelLOD]);
+    
+    // Force render
+    renderScene();
+    
+    console.log('Main_View: Camera AND selection reset to initial state');
+  }, [updateCameraPosition, updateChannelLOD, renderScene, clearSelection]);
 
   const handleMovement = useCallback(() => {
     const camera = cameraRef.current;
@@ -1030,31 +1082,67 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
             }
           }
         } else {
-          // Zoom toward mouse position instead of just center
+          // Zoom toward mouse position (proper implementation)
           const state = cameraStateRef.current;
-          const zoomFactor = 1 + e.deltaY * 0.001;
-          const oldDistance = state.distance;
-          state.distance *= zoomFactor;
-          state.distance = clamp(state.distance, 0.1, 20);
+          const camera = cameraRef.current;
+          const renderer = rendererRef.current;
           
-          // Calculate zoom toward mouse position
-          if (cameraRef.current && rendererRef.current) {
-            const rect = rendererRef.current.domElement.getBoundingClientRect();
-            const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          if (camera && renderer) {
+            const rect = renderer.domElement.getBoundingClientRect();
             
-            // Calculate world position under mouse
+            // Get mouse position in NDC (-1 to 1)
+            const mouseNDC = new THREE.Vector2(
+              ((e.clientX - rect.left) / rect.width) * 2 - 1,
+              -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+            
+            // Create a ray from camera through mouse position
             const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), cameraRef.current);
+            raycaster.setFromCamera(mouseNDC, camera);
             
-            // Calculate the offset to zoom toward mouse position
-            const zoomDelta = (oldDistance - state.distance) * 0.3;
-            const direction = raycaster.ray.direction.clone().normalize();
+            // Find intersection point with a plane at the current lookAt distance
+            const lookAtPoint = new THREE.Vector3(
+              state.panOffset.x,
+              state.panOffset.y,
+              state.panOffset.z
+            );
             
-            // Apply pan offset toward mouse direction
-            state.panOffset.x += direction.x * zoomDelta;
-            state.panOffset.y += direction.y * zoomDelta;
-            state.panOffset.z += direction.z * zoomDelta;
+            // Create plane perpendicular to camera direction at lookAt point
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(cameraDirection, lookAtPoint);
+            
+            // Get the 3D point under the mouse before zoom
+            const pointBeforeZoom = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, pointBeforeZoom);
+            
+            // Apply zoom
+            const zoomFactor = 1 + e.deltaY * 0.001;
+            const oldDistance = state.distance;
+            state.distance *= zoomFactor;
+            state.distance = clamp(state.distance, 0.1, 20);
+            
+            // Calculate how much the point would shift after zoom
+            // and adjust panOffset to keep the point under the cursor
+            if (pointBeforeZoom) {
+              const zoomRatio = state.distance / oldDistance;
+              
+              // Calculate the offset from lookAt to the mouse point
+              const offsetX = pointBeforeZoom.x - state.panOffset.x;
+              const offsetY = pointBeforeZoom.y - state.panOffset.y;
+              const offsetZ = pointBeforeZoom.z - state.panOffset.z;
+              
+              // Move the pan offset toward the mouse point based on zoom change
+              const panAdjust = 1 - zoomRatio;
+              state.panOffset.x += offsetX * panAdjust * 0.5;
+              state.panOffset.y += offsetY * panAdjust * 0.5;
+              state.panOffset.z += offsetZ * panAdjust * 0.5;
+            }
+          } else {
+            // Fallback: simple zoom without mouse position adjustment
+            const zoomFactor = 1 + e.deltaY * 0.001;
+            state.distance *= zoomFactor;
+            state.distance = clamp(state.distance, 0.1, 20);
           }
           
           updateCameraPosition();
