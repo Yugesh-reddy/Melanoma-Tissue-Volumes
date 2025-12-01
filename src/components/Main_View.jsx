@@ -67,7 +67,7 @@ const getConfigSignature = (config) =>
     config.opacity ?? ''
   ].join('|');
 
-const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initialSelectionBounds }) => {
+const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initialSelectionBounds, selectedRegionsData = [] }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -87,6 +87,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
   const cuboidRef = useRef(null);
   const cuboidWireframeRef = useRef(null);
   const cuboidWireframesRef = useRef([]); // Array to store multiple selection boxes
+  const wireframeRegionMapRef = useRef(new Map()); // Map wireframe to regionId
   const isSelectingRef = useRef(false);
   const selectionEndRef = useRef(null);
   const isTogglingRef = useRef(false);
@@ -559,6 +560,9 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       // Mark as temporary if needed
       if (isTemporary) {
         wireframe.userData.isTemporary = true;
+      } else {
+        // Store worldBounds in userData for matching with selectedRegionsData
+        wireframe.userData.worldBounds = worldBounds;
       }
 
       sceneRef.current.add(wireframe);
@@ -795,6 +799,73 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       handleSelectionComplete(initialSelectionBounds);
     }
   }, [initialSelectionBounds, handleSelectionComplete]);
+
+  // Manage wireframes based on selectedRegionsData - remove boxes when regions are deleted
+  useEffect(() => {
+    if (!sceneRef.current) return;
+
+    const scene = sceneRef.current;
+    const wireframes = cuboidWireframesRef.current;
+    const regionMap = wireframeRegionMapRef.current;
+
+    // Helper function to compare worldBounds (with tolerance for floating point)
+    const worldBoundsMatch = (wb1, wb2) => {
+      if (!wb1 || !wb2) return false;
+      const tolerance = 0.0001;
+      const centerMatch = wb1.center && wb2.center &&
+        Math.abs(wb1.center.x - wb2.center.x) < tolerance &&
+        Math.abs(wb1.center.y - wb2.center.y) < tolerance &&
+        Math.abs(wb1.center.z - wb2.center.z) < tolerance;
+      const sizeMatch = wb1.size && wb2.size &&
+        Math.abs(wb1.size.x - wb2.size.x) < tolerance &&
+        Math.abs(wb1.size.y - wb2.size.y) < tolerance &&
+        Math.abs(wb1.size.z - wb2.size.z) < tolerance;
+      return centerMatch && sizeMatch;
+    };
+
+    // Get array of worldBounds from selectedRegionsData
+    const activeWorldBounds = selectedRegionsData
+      .filter(region => region.worldBounds)
+      .map(region => region.worldBounds);
+
+    // Remove wireframes that don't match any active region
+    const wireframesToRemove = [];
+    wireframes.forEach((wireframe, index) => {
+      if (!wireframe || wireframe.userData.isTemporary) return;
+      
+      const wireframeWorldBounds = wireframe.userData.worldBounds;
+      if (!wireframeWorldBounds) return;
+
+      // Check if this wireframe's worldBounds matches any active region
+      const isActive = activeWorldBounds.some(activeWB => 
+        worldBoundsMatch(wireframeWorldBounds, activeWB)
+      );
+
+      if (!isActive) {
+        wireframesToRemove.push({ wireframe, index });
+      }
+    });
+
+    // Remove wireframes that are no longer in selectedRegionsData
+    wireframesToRemove.forEach(({ wireframe, index }) => {
+      try {
+        if (scene.children.includes(wireframe)) {
+          scene.remove(wireframe);
+        }
+        if (wireframe.geometry) wireframe.geometry.dispose();
+        if (wireframe.material) wireframe.material.dispose();
+        wireframes.splice(index, 1);
+        regionMap.delete(wireframe);
+        console.log('Main_View: Removed wireframe for deleted region');
+      } catch (err) {
+        console.error('Main_View: Error removing wireframe:', err);
+      }
+    });
+
+    if (wireframesToRemove.length > 0) {
+      renderScene();
+    }
+  }, [selectedRegionsData, renderScene]);
 
   // Setup Three.js scene
   useEffect(() => {

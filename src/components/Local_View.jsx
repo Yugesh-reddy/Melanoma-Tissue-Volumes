@@ -1157,7 +1157,7 @@ const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
 };
 
 // Main wrapper component with tabs support
-const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) => {
+const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], onRegionRemove }) => {
   // Support both array and single selection for backward compatibility
   const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
@@ -1231,6 +1231,11 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
     
     // Add to closed tabs
     setClosedTabIds(prev => new Set([...prev, regionId]));
+    
+    // Notify parent to remove the region (which will also remove the box in Main View)
+    if (onRegionRemove) {
+      onRegionRemove(regionId);
+    }
   };
 
   // If no selections, show placeholder
