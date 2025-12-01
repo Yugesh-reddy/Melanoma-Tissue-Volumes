@@ -525,16 +525,16 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
           borderRadius: '6px',
           padding: '10px 12px',
           marginBottom: '12px',
-          fontSize: '11px',
+          fontSize: '14px',
           lineHeight: '1.5',
           color: '#e0e0e0'
         }}>
           <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#fff' }}>Quick Guide:</div>
           <ul style={{ margin: 0, paddingLeft: '16px' }}>
-            <li><strong>☑ Checkbox:</strong> Toggle channel visibility on/off</li>
-            <li><strong>🎨 Color Square:</strong> Click to change channel display color</li>
-            <li><strong>📊 Dropdown:</strong> Select different biomarker channels</li>
-            <li><strong>🎚️ Slider:</strong> Adjust min/max intensity thresholds</li>
+            <li><strong>Checkbox:</strong> Toggle channel visibility on/off</li>
+            <li><strong> Color Square:</strong> Click to change channel display color</li>
+            <li><strong> Dropdown:</strong> Select different biomarker channels</li>
+            <li><strong> Slider:</strong> Adjust min/max intensity thresholds</li>
             <li><strong>Apply Filter:</strong> Update visualization with new thresholds</li>
           </ul>
         </div>
