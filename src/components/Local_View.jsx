@@ -970,7 +970,16 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
         alignItems: 'center',
         gap: '8px'
       }}>
-        Local View
+        {/* Composite Glyph: Magnifying glass + 3D Cube */}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
+          {/* 3D Cube */}
+          <path d="M12 2L4 6v8l8 4 8-4V6l-8-4z" stroke="#4ade80" strokeWidth="1.5" fill="rgba(74, 222, 128, 0.15)" />
+          <path d="M4 6l8 4 8-4M12 10v8" stroke="#4ade80" strokeWidth="1.5" strokeLinecap="round" />
+          {/* Magnifying glass overlay */}
+          <circle cx="17" cy="17" r="4" stroke="#fff" strokeWidth="1.5" fill="rgba(0,0,0,0.5)" />
+          <line x1="20" y1="20" x2="23" y2="23" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        <span style={{ color: '#4ade80' }}>Local View</span>
         {/* Info Button */}
         {selectedRegionData && sectionInfo && (
           <button

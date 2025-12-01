@@ -909,9 +909,25 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
           margin: 0,
           fontSize: '14px',
           color: 'white',
-          fontWeight: '500'
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
         }}>
-          Graph Panel
+          {/* Composite Glyph: Bar chart + DNA helix */}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
+            {/* Bar chart */}
+            <rect x="2" y="14" width="4" height="8" rx="1" fill="#4ade80" opacity="0.8" />
+            <rect x="8" y="10" width="4" height="12" rx="1" fill="#4ade80" opacity="0.9" />
+            <rect x="14" y="6" width="4" height="16" rx="1" fill="#4ade80" />
+            {/* DNA helix overlay */}
+            <path d="M18 2c2 2 2 4 0 6s-2 4 0 6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+            <path d="M22 2c-2 2-2 4 0 6s2 4 0 6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+            <line x1="18" y1="4" x2="22" y2="4" stroke="#fff" strokeWidth="1" opacity="0.7" />
+            <line x1="18" y1="8" x2="22" y2="8" stroke="#fff" strokeWidth="1" opacity="0.7" />
+            <line x1="18" y1="12" x2="22" y2="12" stroke="#fff" strokeWidth="1" opacity="0.7" />
+          </svg>
+          <span style={{ color: '#4ade80' }}>Graph Panel</span>
         </h3>
 
         {/* Toggle buttons with icons and labels */}

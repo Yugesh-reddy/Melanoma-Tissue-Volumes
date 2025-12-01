@@ -510,17 +510,34 @@ const Direction_view = ({ channels = [] }) => {
             margin: 0,
             fontSize: '14px',
             color: 'white',
-            fontWeight: 500
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}
         >
-          Direction View
+          {/* Composite Glyph: Compass + Directional arrows */}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
+            {/* Compass circle */}
+            <circle cx="12" cy="12" r="10" stroke="#4ade80" strokeWidth="1.5" fill="rgba(74, 222, 128, 0.1)" />
+            {/* Cardinal direction markers */}
+            <circle cx="12" cy="3" r="1.5" fill="#fff" />
+            <circle cx="21" cy="12" r="1.5" fill="#4ade80" />
+            <circle cx="12" cy="21" r="1.5" fill="#fff" opacity="0.5" />
+            <circle cx="3" cy="12" r="1.5" fill="#4ade80" opacity="0.5" />
+            {/* Direction arrow */}
+            <path d="M12 7L16 12L12 17L8 12Z" fill="#4ade80" stroke="#fff" strokeWidth="1" />
+            <path d="M12 7L12 12" stroke="#fff" strokeWidth="1.5" />
+          </svg>
+          <span style={{ color: '#4ade80' }}>Direction View</span>
         </h3>
         {/* One-line explanation of arrows */}
         <div style={{
           fontSize: '11px',
           color: 'rgba(255, 255, 255, 0.6)',
           marginTop: '4px',
-          fontStyle: 'italic'
+          fontStyle: 'italic',
+          marginLeft: '30px'
         }}>
           Arrows show principal direction of each channel's high-intensity regions
         </div>
