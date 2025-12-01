@@ -1167,6 +1167,13 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
     }
   };
 
+  // Selection colors fallback (synced with App.jsx)
+  const SELECTION_COLORS = [
+    '#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa',
+    '#fb923c', '#22d3d8', '#f87171', '#84cc16', '#e879f9'
+  ];
+  const getSelectionColorFallback = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];
+
   // Header component (shared between empty and filled states)
   const Header = () => (
     <div style={{
@@ -1213,62 +1220,70 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
           overflowX: 'auto',
           overflowY: 'hidden'
         }}>
-          {regionsArray.map((region, index) => (
-            <div
-              key={region.id || index}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '2px',
-                padding: '4px 6px',
-                background: activeTabIndex === index ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
-                borderRadius: '3px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onClick={() => setActiveTabIndex(index)}
-            >
-              {/* Box indicator */}
-              <div style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '2px',
-                backgroundColor: activeTabIndex === index ? '#4ade80' : 'rgba(255,255,255,0.5)',
-                flexShrink: 0
-              }} />
-              <span style={{ 
-                fontSize: '11px', 
-                color: activeTabIndex === index ? '#4ade80' : 'rgba(255,255,255,0.7)',
-                fontWeight: activeTabIndex === index ? '600' : '400',
-                whiteSpace: 'nowrap'
-              }}>
-                Box {index + 1}
-              </span>
-              {/* Close button */}
-              <button
-                onClick={(e) => handleRemoveTab(e, region.id, index)}
+          {regionsArray.map((region, index) => {
+            // Use selection color from region data, or fallback to index-based color
+            const selectionColor = region.color || getSelectionColorFallback(index);
+            const isActive = activeTabIndex === index;
+            
+            return (
+              <div
+                key={region.id || index}
                 style={{
-                  background: 'transparent',
-                  border: 'none',
-                  padding: '0 2px',
-                  cursor: 'pointer',
-                  color: activeTabIndex === index ? '#4ade80' : 'rgba(255,255,255,0.5)',
-                  fontSize: '12px',
-                  lineHeight: '1',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: 0.7,
-                  transition: 'opacity 0.2s'
+                  gap: '4px',
+                  padding: '4px 8px',
+                  background: isActive ? `${selectionColor}33` : 'transparent', // 33 = 20% opacity in hex
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  border: isActive ? `1px solid ${selectionColor}` : '1px solid transparent'
                 }}
-                onMouseEnter={(e) => e.target.style.opacity = '1'}
-                onMouseLeave={(e) => e.target.style.opacity = '0.7'}
-                title={`Remove Box ${index + 1}`}
+                onClick={() => setActiveTabIndex(index)}
               >
-                ×
-              </button>
-            </div>
-          ))}
+                {/* Box indicator - colored square */}
+                <div style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '2px',
+                  backgroundColor: selectionColor,
+                  flexShrink: 0,
+                  boxShadow: isActive ? `0 0 6px ${selectionColor}` : 'none'
+                }} />
+                <span style={{ 
+                  fontSize: '11px', 
+                  color: isActive ? selectionColor : 'rgba(255,255,255,0.7)',
+                  fontWeight: isActive ? '600' : '400',
+                  whiteSpace: 'nowrap'
+                }}>
+                  Box {index + 1}
+                </span>
+                {/* Close button */}
+                <button
+                  onClick={(e) => handleRemoveTab(e, region.id, index)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '0 2px',
+                    cursor: 'pointer',
+                    color: isActive ? selectionColor : 'rgba(255,255,255,0.5)',
+                    fontSize: '14px',
+                    lineHeight: '1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.target.style.opacity = '1'}
+                  onMouseLeave={(e) => e.target.style.opacity = '0.7'}
+                  title={`Remove Box ${index + 1}`}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
           
           {/* Clear All button - only show if more than 1 selection */}
           {regionsArray.length > 1 && onClearAllSelections && (

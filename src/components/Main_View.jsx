@@ -684,8 +684,24 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     };
   };
 
+  // Selection box colors - synced with App.jsx
+  const SELECTION_COLORS = [
+    '#4ade80', // Green (default)
+    '#60a5fa', // Blue
+    '#f472b6', // Pink
+    '#facc15', // Yellow
+    '#a78bfa', // Purple
+    '#fb923c', // Orange
+    '#22d3d8', // Cyan
+    '#f87171', // Red
+    '#84cc16', // Lime
+    '#e879f9', // Magenta
+  ];
+
+  const getSelectionColor = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];
+
   // Create or update 3D cuboid wireframe in scene - adds new box to array
-  const updateCuboidWireframe = (worldBounds, isTemporary = false) => {
+  const updateCuboidWireframe = (worldBounds, isTemporary = false, colorOverride = null) => {
     try {
       if (!sceneRef.current || !worldBounds) {
         console.warn('Main_View: Cannot update wireframe - scene or bounds missing');
@@ -716,15 +732,19 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       const safeSizeY = Math.max(minSize, Math.abs(size.y));
       const safeSizeZ = Math.max(minSize, Math.abs(size.z));
 
+      // Determine color - use override, or get from current selection count
+      const wireframeColor = colorOverride || getSelectionColor(cuboidWireframesRef.current.length);
+
       const boxGeometry = new THREE.BoxGeometry(safeSizeX, safeSizeY, safeSizeZ);
       const boxEdges = new THREE.EdgesGeometry(boxGeometry);
       const boxMaterial = new THREE.LineBasicMaterial({
-        color: 0x00ff00,
+        color: wireframeColor,
         linewidth: 2,
         transparent: true,
         opacity: isTemporary ? 0.6 : 0.8
       });
       const wireframe = new THREE.LineSegments(boxEdges, boxMaterial);
+      wireframe.userData.color = wireframeColor; // Store color for reference
 
       // Validate center values
       if (center && !isNaN(center.x) && !isNaN(center.y) && !isNaN(center.z)) {
@@ -1234,24 +1254,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
               console.error('Main_View: Error updating wireframe on wheel:', err);
             }
           }
-        } else if (selectionModeRef.current && cuboidWireframesRef.current.length > 0) {
-          // If selection mode is active and we have boxes, move the last one in Z direction
-          e.preventDefault();
-          const zDelta = e.deltaY * 0.001;
-          
-          // Move only the last (most recent) box in Z direction
-          const lastBox = cuboidWireframesRef.current[cuboidWireframesRef.current.length - 1];
-          if (lastBox && !lastBox.userData.isTemporary) {
-            lastBox.position.z += zDelta;
-            
-            // Also update cuboidRef if it exists
-            if (cuboidRef.current) {
-              cuboidRef.current.center.z += zDelta;
-              cuboidRef.current.min.z += zDelta;
-              cuboidRef.current.max.z += zDelta;
-            }
-          }
         } else {
+          // Normal zoom - scroll always zooms (except during active selection drawing above)
           // Zoom toward mouse position (proper implementation)
           const state = cameraStateRef.current;
           const camera = cameraRef.current;
