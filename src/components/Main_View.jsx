@@ -181,6 +181,20 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     }
   }, [selectedRegionsData]);
 
+  // Sync wireframe visibility with selection mode
+  useEffect(() => {
+    // Set all wireframes visibility based on selection mode
+    cuboidWireframesRef.current.forEach((wireframe) => {
+      if (wireframe) {
+        wireframe.visible = selectionMode;
+      }
+    });
+    if (cuboidWireframeRef.current) {
+      cuboidWireframeRef.current.visible = selectionMode;
+    }
+    console.log(`Main_View: Selection mode changed to ${selectionMode}, wireframes visibility updated`);
+  }, [selectionMode]);
+
   const cameraStateRef = useRef({ ...CAMERA_INITIAL_STATE });
 
   const getDesiredSampling = useCallback((distance = 3) => {
@@ -1705,28 +1719,25 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
             // Update state immediately
             setSelectionMode(newMode);
 
-            // Clear cuboid when disabling selection (defer to avoid render issues)
-            if (!newMode && cuboidWireframeRef.current && sceneRef.current) {
+            // Toggle wireframe visibility (don't dispose - just hide/show)
+            if (sceneRef.current) {
               requestAnimationFrame(() => {
                 try {
-                  if (sceneRef.current && cuboidWireframeRef.current) {
-                    if (sceneRef.current.children.includes(cuboidWireframeRef.current)) {
-                      sceneRef.current.remove(cuboidWireframeRef.current);
+                  // Toggle visibility of all wireframes
+                  cuboidWireframesRef.current.forEach((wireframe) => {
+                    if (wireframe) {
+                      wireframe.visible = newMode;
                     }
-                    if (cuboidWireframeRef.current.geometry) {
-                      cuboidWireframeRef.current.geometry.dispose();
-                    }
-                    if (cuboidWireframeRef.current.material) {
-                      cuboidWireframeRef.current.material.dispose();
-                    }
-                    cuboidWireframeRef.current = null;
-                    cuboidRef.current = null;
-                    setCuboidCenter(null);
-                    setCuboidSize(null);
-                    currentSelectionBoundsRef.current = null; // Clear stored bounds
+                  });
+                  
+                  // Also handle single wireframe ref
+                  if (cuboidWireframeRef.current) {
+                    cuboidWireframeRef.current.visible = newMode;
                   }
+                  
+                  console.log(`Main_View: Wireframes visibility set to ${newMode}`);
                 } catch (err) {
-                  console.error('Main_View: Error clearing cuboid:', err);
+                  console.error('Main_View: Error toggling wireframe visibility:', err);
                 } finally {
                   isTogglingRef.current = false;
                 }
