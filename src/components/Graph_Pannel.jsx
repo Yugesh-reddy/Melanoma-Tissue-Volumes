@@ -269,6 +269,17 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     analyzeSelectedRegion();
   }, [analyzeSelectedRegion]);
 
+  // Clear SVG when no selections
+  useEffect(() => {
+    const hasSelections = (selectedRegionsData && selectedRegionsData.length > 0) || selectedRegionData;
+    if (!hasSelections && svgRef.current) {
+      // Clear the SVG content when there are no selections
+      d3.select(svgRef.current).selectAll('*').remove();
+      setChannelStats(null);
+      console.log('Graph_Pannel: Cleared SVG - no selections');
+    }
+  }, [selectedRegionsData, selectedRegionData]);
+
   // Render Bar Chart
   const renderBarChart = useCallback(() => {
     if (!svgRef.current || !channelStats) return;

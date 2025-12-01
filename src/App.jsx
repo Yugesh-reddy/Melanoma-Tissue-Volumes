@@ -32,13 +32,22 @@ function App() {
   const handleSelectionChange = useCallback((selectedData) => {
     console.log('App: ===== RECEIVED SELECTION DATA =====');
     console.log('App: Selected data received:', selectedData);
+
+    // If null is passed, clear all selections (reset was pressed)
+    if (selectedData === null) {
+      console.log('App: Clearing all selections (reset triggered)');
+      setSelectedRegionsData([]);
+      lastSelectionBoundsRef.current = null;
+      return;
+    }
+
     console.log('App: Bounds:', selectedData?.bounds);
     console.log('App: Channels:', selectedData?.channels);
     console.log('App: Scaling:', selectedData?.scaling);
     console.log('App: Adding to selectedRegionsData array...');
 
-    if (!selectedData || !selectedData.bounds) {
-      console.error('App: Invalid selection data received:', selectedData);
+    if (!selectedData.bounds) {
+      console.error('App: Invalid selection data received (no bounds):', selectedData);
       return;
     }
 
@@ -229,6 +238,7 @@ function App() {
               activeRegions={selectedRegions}
               onSelectionChange={handleSelectionChange}
               initialSelectionBounds={lastSelectionBoundsRef.current} // Pass persistent bounds
+              selectedRegionsData={selectedRegionsData} // Pass selections to sync wireframes
             />
           </div>
 

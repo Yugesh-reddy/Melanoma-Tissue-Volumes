@@ -1056,36 +1056,38 @@ const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
         </div>
       )}
 
-      {/* Reset View Button */}
+      {/* Reset View Button - Consistent with Region_Selection */}
       {selectedRegionData && (
         <button
           id="reset-view-btn"
           onClick={resetView}
           style={{
             position: 'absolute',
-            top: '10px',
+            bottom: '10px',
             right: '10px',
             zIndex: 100,
             padding: '6px 12px',
-            backgroundColor: '#555',
-            color: 'white',
-            border: 'none',
+            fontSize: '12px',
+            fontWeight: 500,
+            color: '#fff',
+            background: '#2d7ff9',
+            border: '1px solid #2d7ff9',
             borderRadius: '4px',
             cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
             transition: 'all 0.15s ease',
-            transform: 'scale(1)'
+            outline: 'none'
           }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = '#666'}
+          onMouseEnter={(e) => {
+            e.target.style.background = '#4a90ff';
+            e.target.style.borderColor = '#4a90ff';
+          }}
           onMouseLeave={(e) => {
-            e.target.style.backgroundColor = '#555';
-            e.target.style.transform = 'scale(1)';
+            e.target.style.background = '#2d7ff9';
+            e.target.style.borderColor = '#2d7ff9';
           }}
           title="Reset camera view to initial position"
         >
-          Reset View
+          Reset
         </button>
       )}
 
