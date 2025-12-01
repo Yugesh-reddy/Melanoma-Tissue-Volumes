@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import channelNamesData from '../channel_names.json';
 
 const REGION_DEFINITIONS = [
@@ -111,6 +111,44 @@ const REGION_DEFINITIONS = [
   }
 ];
 
+// Two Region Combinations
+const TWO_REGION_COMBINATIONS = [
+  {
+    id: 'tumor-immune',
+    title: 'Tumor + Immune',
+    description: 'Tumor–immune interaction',
+    regionIds: ['tumor-epithelial', 'immune']
+  },
+  {
+    id: 'tumor-checkpoint',
+    title: 'Tumor + Checkpoint',
+    description: 'Immune evasion / PD-L1 biology',
+    regionIds: ['tumor-epithelial', 'checkpoint-crosstalk']
+  },
+  {
+    id: 'immune-stroma',
+    title: 'Immune + Stroma',
+    description: 'Immune positioning & stromal barriers',
+    regionIds: ['immune', 'stroma']
+  }
+];
+
+// Three Region Combinations
+const THREE_REGION_COMBINATIONS = [
+  {
+    id: 'tumor-immune-checkpoint',
+    title: 'Tumor + Immune + Checkpoint',
+    description: 'Comprehensive immuno-oncology view',
+    regionIds: ['tumor-epithelial', 'immune', 'checkpoint-crosstalk']
+  },
+  {
+    id: 'tumor-stroma-proliferation',
+    title: 'Tumor + Stroma + Proliferation',
+    description: 'Architecture + growth + tumor cell state',
+    regionIds: ['tumor-epithelial', 'stroma', 'proliferation-cellstate']
+  }
+];
+
 const rgbToHex = (r, g, b) => {
   const toHex = (value) => {
     const clamped = Math.max(0, Math.min(255, value));
@@ -156,6 +194,8 @@ const buildLookupTables = (names) => {
 };
 
 const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
+  const [activeTab, setActiveTab] = useState('single'); // 'single', 'two', 'three'
+
   const lookupTables = useMemo(
     () => buildLookupTables(channelNamesData || []),
     []
@@ -234,11 +274,80 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
     };
   };
 
+  // Build payload for combination (two or three regions)
+  const buildCombinationPayload = (combination) => {
+    const allChannels = [];
+    const allMarkers = [];
+    const allTopMarkers = [];
+
+    combination.regionIds.forEach((regionId) => {
+      const region = REGION_DEFINITIONS.find((r) => r.id === regionId);
+      if (region) {
+        const regionPayload = buildRegionPayload(region);
+        allChannels.push(...regionPayload.channels);
+        allMarkers.push(...region.markers);
+        allTopMarkers.push(...regionPayload.topMarkers);
+      }
+    });
+
+    return {
+      id: combination.id,
+      title: combination.title,
+      description: combination.description,
+      topMarkers: allTopMarkers,
+      channels: allChannels,
+      markers: allMarkers,
+      regionIds: combination.regionIds,
+      isCombination: true
+    };
+  };
+
   const handleRegionToggle = (region, shouldSelect) => {
     if (!onToggleRegion) return;
     onToggleRegion({
       regionPayload: buildRegionPayload(region),
       shouldSelect
+    });
+  };
+
+  const handleCombinationToggle = (combination, shouldSelect) => {
+    if (!onToggleRegion) return;
+    
+    // Toggle all regions in the combination
+    combination.regionIds.forEach((regionId) => {
+      const region = REGION_DEFINITIONS.find((r) => r.id === regionId);
+      if (region) {
+        const isCurrentlySelected = selectedRegionIds.has(regionId);
+        // Only toggle if the state needs to change
+        if (isCurrentlySelected !== shouldSelect) {
+          onToggleRegion({
+            regionPayload: buildRegionPayload(region),
+            shouldSelect
+          });
+        }
+      }
+    });
+  };
+
+  // Check if a combination is selected (all its regions must be selected)
+  const isCombinationSelected = (combination) => {
+    return combination.regionIds.every((regionId) => selectedRegionIds.has(regionId));
+  };
+
+  // Reset all selections
+  const handleResetAll = () => {
+    if (!onToggleRegion) return;
+    
+    // Deselect all currently selected regions
+    selectedRegions.forEach((region) => {
+      // Find the original region definition to build payload
+      const regionDef = REGION_DEFINITIONS.find((r) => r.id === region.id);
+      if (regionDef) {
+        onToggleRegion({
+          regionPayload: buildRegionPayload(regionDef),
+          shouldSelect: false
+        });
+      }
     });
   };
 
@@ -257,19 +366,125 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
         boxSizing: 'border-box'
       }}
     >
-      <h3
+      <div
         style={{
-          margin: 0,
-          fontSize: '18px',
-          color: 'white',
-          fontWeight: 500
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
         }}
       >
-        Region Selection
-      </h3>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: '18px',
+            color: 'white',
+            fontWeight: 500
+          }}
+        >
+          Region Selection
+        </h3>
+        <button
+          type="button"
+          onClick={handleResetAll}
+          disabled={selectedRegions.length === 0}
+          style={{
+            padding: '6px 12px',
+            fontSize: '12px',
+            fontWeight: 500,
+            color: selectedRegions.length === 0 ? '#666' : '#fff',
+            background: selectedRegions.length === 0 ? '#1a1a1a' : '#2d7ff9',
+            border: selectedRegions.length === 0 ? '1px solid #444' : '1px solid #2d7ff9',
+            borderRadius: '4px',
+            cursor: selectedRegions.length === 0 ? 'not-allowed' : 'pointer',
+            transition: 'all 0.15s ease',
+            outline: 'none'
+          }}
+          onMouseEnter={(e) => {
+            if (selectedRegions.length > 0) {
+              e.target.style.background = '#1f57b8';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (selectedRegions.length > 0) {
+              e.target.style.background = '#2d7ff9';
+            }
+          }}
+          title="Reset all selections"
+        >
+          Reset
+        </button>
+      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', flex: 1 }}>
-        {REGION_DEFINITIONS.map((region) => {
+      {/* Tab Bar */}
+      <div
+        style={{
+          display: 'flex',
+          borderBottom: '1px solid #444',
+          paddingBottom: '8px',
+          gap: '4px',
+          flexShrink: 0
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab('single')}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            fontSize: '12px',
+            fontWeight: activeTab === 'single' ? 600 : 400,
+            color: activeTab === 'single' ? '#fff' : '#b9bed0',
+            background: activeTab === 'single' ? '#1a1d29' : 'transparent',
+            border: activeTab === 'single' ? '1px solid #2d7ff9' : '1px solid #444',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          Single Region
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('two')}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            fontSize: '12px',
+            fontWeight: activeTab === 'two' ? 600 : 400,
+            color: activeTab === 'two' ? '#fff' : '#b9bed0',
+            background: activeTab === 'two' ? '#1a1d29' : 'transparent',
+            border: activeTab === 'two' ? '1px solid #2d7ff9' : '1px solid #444',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          Two Regions
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('three')}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            fontSize: '12px',
+            fontWeight: activeTab === 'three' ? 600 : 400,
+            color: activeTab === 'three' ? '#fff' : '#b9bed0',
+            background: activeTab === 'three' ? '#1a1d29' : 'transparent',
+            border: activeTab === 'three' ? '1px solid #2d7ff9' : '1px solid #444',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          Three Regions
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
+        {/* Single Region Tab */}
+        {activeTab === 'single' && REGION_DEFINITIONS.map((region) => {
           const isSelected = selectedRegionIds.has(region.id);
 
           return (
@@ -347,6 +562,176 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                   }}
                 >
                   ({region.markers.join(', ')})
+                </div>
+              </div>
+            </button>
+          );
+        })}
+
+        {/* Two Regions Tab */}
+        {activeTab === 'two' && TWO_REGION_COMBINATIONS.map((combination) => {
+          const isSelected = isCombinationSelected(combination);
+
+          return (
+            <button
+              key={combination.id}
+              type="button"
+              onClick={() => handleCombinationToggle(combination, !isSelected)}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                width: '100%',
+                background: isSelected ? '#1a1d29' : '#0f1016',
+                borderRadius: '6px',
+                padding: '10px 12px',
+                cursor: 'pointer',
+                border: 'none',
+                outline: 'none'
+              }}
+              aria-pressed={isSelected}
+            >
+              <div
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '5px',
+                  border: isSelected ? '1px solid #1f57b8' : '1px solid #5a5f73',
+                  backgroundColor: isSelected ? '#2d7ff9' : '#12131d',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '1px',
+                  transition: 'background-color 0.15s ease, border 0.15s ease'
+                }}
+              >
+                {isSelected && (
+                  <svg
+                    viewBox="0 0 16 16"
+                    style={{
+                      width: '12px',
+                      height: '12px'
+                    }}
+                  >
+                    <polyline
+                      points="3.2 8.6 6.4 11.6 12.4 4.4"
+                      style={{
+                        fill: 'none',
+                        stroke: '#ffffff',
+                        strokeWidth: '2.1',
+                        strokeLinecap: 'round',
+                        strokeLinejoin: 'round'
+                      }}
+                    />
+                  </svg>
+                )}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    color: 'white',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    marginBottom: '4px'
+                  }}
+                >
+                  {combination.title}
+                </div>
+                <div
+                  style={{
+                    color: '#b9bed0',
+                    fontSize: '12px',
+                    lineHeight: 1.4
+                  }}
+                >
+                  {combination.description}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+
+        {/* Three Regions Tab */}
+        {activeTab === 'three' && THREE_REGION_COMBINATIONS.map((combination) => {
+          const isSelected = isCombinationSelected(combination);
+
+          return (
+            <button
+              key={combination.id}
+              type="button"
+              onClick={() => handleCombinationToggle(combination, !isSelected)}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                width: '100%',
+                background: isSelected ? '#1a1d29' : '#0f1016',
+                borderRadius: '6px',
+                padding: '10px 12px',
+                cursor: 'pointer',
+                border: 'none',
+                outline: 'none'
+              }}
+              aria-pressed={isSelected}
+            >
+              <div
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '5px',
+                  border: isSelected ? '1px solid #1f57b8' : '1px solid #5a5f73',
+                  backgroundColor: isSelected ? '#2d7ff9' : '#12131d',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '1px',
+                  transition: 'background-color 0.15s ease, border 0.15s ease'
+                }}
+              >
+                {isSelected && (
+                  <svg
+                    viewBox="0 0 16 16"
+                    style={{
+                      width: '12px',
+                      height: '12px'
+                    }}
+                  >
+                    <polyline
+                      points="3.2 8.6 6.4 11.6 12.4 4.4"
+                      style={{
+                        fill: 'none',
+                        stroke: '#ffffff',
+                        strokeWidth: '2.1',
+                        strokeLinecap: 'round',
+                        strokeLinejoin: 'round'
+                      }}
+                    />
+                  </svg>
+                )}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    color: 'white',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    marginBottom: '4px'
+                  }}
+                >
+                  {combination.title}
+                </div>
+                <div
+                  style={{
+                    color: '#b9bed0',
+                    fontSize: '12px',
+                    lineHeight: 1.4
+                  }}
+                >
+                  {combination.description}
                 </div>
               </div>
             </button>

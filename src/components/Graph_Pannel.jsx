@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { loadChannelData } from '../hooks/useChannelData';
 import channelNamesData from '../channel_names.json';
 
-const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] }) => {
+const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], selectedRegions = [] }) => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const [graphType, setGraphType] = useState('bar'); // 'bar', 'heatmap', 'violin'
@@ -115,7 +115,12 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
 
   // Analyze selected region with performance optimizations
   const analyzeSelectedRegion = useCallback(async () => {
-    if (!selectedRegionData || !selectedRegionData.bounds) {
+    // Support both single and multiple selections
+    const regionsToAnalyze = selectedRegionsData && selectedRegionsData.length > 0 
+      ? selectedRegionsData 
+      : (selectedRegionData ? [selectedRegionData] : []);
+
+    if (regionsToAnalyze.length === 0) {
       setChannelStats(null);
       return;
     }
@@ -124,10 +129,18 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
     setError(null);
 
     try {
-      const bounds = selectedRegionData.bounds;
+      // Analyze all regions
+      const allStats = {};
+      
+      for (let regionIndex = 0; regionIndex < regionsToAnalyze.length; regionIndex++) {
+        const regionData = regionsToAnalyze[regionIndex];
+        if (!regionData || !regionData.bounds) continue;
 
-      // Determine channels to analyze
-      let channelsToAnalyze = channels.length > 0 ? channels : selectedRegionData.channels || [];
+        const bounds = regionData.bounds;
+
+        // Determine channels to analyze for this region
+        // Use region's channels if available, otherwise use global channels
+        let channelsToAnalyze = channels.length > 0 ? channels : (regionData.channels || []);
 
       // If we have selected regions and want co-expression, collect all unique channels from regions
       if (graphType === 'heatmap' && selectedRegions.length > 0) {
@@ -197,10 +210,34 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
 
         const channelStat = calculateStats(voxels);
 
-        stats[config.channelIndex] = {
-          name: getBiomarkerName(config.channelIndex),
-          channelIndex: config.channelIndex,
-          color: config.color,
+        // Store stats per channel per region
+        const channelKey = config.channelIndex;
+        if (!allStats[channelKey]) {
+          allStats[channelKey] = {
+            name: getBiomarkerName(config.channelIndex),
+            channelIndex: config.channelIndex,
+            color: config.color,
+            regions: []
+          };
+        }
+
+        // Generate color for this box (use different shades/variations)
+        const boxColors = [
+          '#4ade80', // Green
+          '#3b82f6', // Blue
+          '#f59e0b', // Orange
+          '#ef4444', // Red
+          '#8b5cf6', // Purple
+          '#ec4899', // Pink
+          '#06b6d4', // Cyan
+          '#f97316'  // Orange-red
+        ];
+        const boxColor = boxColors[regionIndex % boxColors.length];
+
+        allStats[channelKey].regions.push({
+          regionIndex,
+          regionId: regionData.id || regionIndex,
+          color: boxColor,
           cellCount,
           totalVoxels,
           volumeOccupied: cellCount,
@@ -214,17 +251,18 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
           min: channelStat.min,
           max: channelStat.max,
           distribution: channelStat.distribution
-        };
+        });
+      }
       }
 
-      setChannelStats(stats);
+      setChannelStats(allStats);
     } catch (err) {
       console.error('Graph_Panel: Error analyzing region:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [selectedRegionData, channels, selectedRegions, graphType, loadChannelData, extractVoxelsInBounds, calculateStats, getBiomarkerName]);
+  }, [selectedRegionData, selectedRegionsData, channels, selectedRegions, graphType, extractVoxelsInBounds, calculateStats, getBiomarkerName]);
 
   // Analyze region when selection or channels change
   useEffect(() => {
@@ -258,40 +296,123 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
     const statsArray = Object.values(channelStats);
     if (statsArray.length === 0) return;
 
+    // Check if we have multiple regions (grouped bars) or single region (simple bars)
+    const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length > 1);
+    const maxRegions = hasMultipleRegions 
+      ? Math.max(...statsArray.map(d => d.regions ? d.regions.length : 1))
+      : 1;
+
     // Use cell count for bar chart
     const xScale = d3.scaleBand()
       .domain(statsArray.map(d => d.name))
       .range([0, chartWidth])
-      .padding(0.2);
+      .padding(hasMultipleRegions ? 0.2 : 0.2);
+
+    // Calculate max value across all regions
+    let maxValue = 0;
+    statsArray.forEach(channel => {
+      if (channel.regions && channel.regions.length > 0) {
+        channel.regions.forEach(region => {
+          maxValue = Math.max(maxValue, region.cellCount);
+        });
+      } else {
+        maxValue = Math.max(maxValue, channel.cellCount || 0);
+      }
+    });
 
     const yScale = d3.scaleLinear()
-      .domain([0, d3.max(statsArray, d => d.cellCount) || 1])
+      .domain([0, maxValue || 1])
       .nice()
       .range([chartHeight, 0]);
 
-    // Bars
-    g.selectAll('.bar')
-      .data(statsArray)
-      .enter()
-      .append('rect')
-      .attr('class', 'bar')
-      .attr('x', d => xScale(d.name))
-      .attr('y', d => yScale(d.cellCount))
-      .attr('width', xScale.bandwidth())
-      .attr('height', d => chartHeight - yScale(d.cellCount))
-      .attr('fill', d => d.color)
-      .attr('opacity', 0.8)
-      .on('mouseover', function (event, d) {
-        d3.select(this).attr('opacity', 1);
-        tooltip.style('opacity', 1)
-          .html(`<strong>${d.name}</strong><br/>Cells: ${d.cellCount.toLocaleString()}<br/>Density: ${d.density.toFixed(2)} cells/μm³`)
-          .style('left', (event.pageX + 10) + 'px')
-          .style('top', (event.pageY - 10) + 'px');
-      })
-      .on('mouseout', function () {
-        d3.select(this).attr('opacity', 0.8);
-        tooltip.style('opacity', 0);
+    // Sub-group scale for grouped bars
+    const xSubgroupScale = hasMultipleRegions
+      ? d3.scaleBand()
+          .domain(d3.range(maxRegions))
+          .range([0, xScale.bandwidth()])
+          .padding(0.1)
+      : null;
+
+    // Create tooltip
+    const tooltip = d3.select('body').append('div')
+      .attr('class', 'graph-tooltip')
+      .style('opacity', 0)
+      .style('position', 'absolute')
+      .style('background', 'rgba(0, 0, 0, 0.9)')
+      .style('color', '#fff')
+      .style('padding', '8px')
+      .style('border-radius', '4px')
+      .style('pointer-events', 'none')
+      .style('font-size', '12px')
+      .style('z-index', '10000');
+
+    // Bars - grouped if multiple regions, simple if single
+    if (hasMultipleRegions) {
+      // Grouped bars
+      statsArray.forEach((channel, channelIndex) => {
+        const xPos = xScale(channel.name);
+        
+        if (channel.regions && channel.regions.length > 0) {
+          channel.regions.forEach((region, regionIndex) => {
+            const barWidth = xSubgroupScale.bandwidth();
+            const barX = xPos + xSubgroupScale(regionIndex);
+            
+            g.append('rect')
+              .attr('class', 'bar')
+              .attr('x', barX)
+              .attr('y', yScale(region.cellCount))
+              .attr('width', barWidth)
+              .attr('height', chartHeight - yScale(region.cellCount))
+              .attr('fill', region.color)
+              .attr('opacity', 0.8)
+              .on('mouseover', function (event) {
+                d3.select(this).attr('opacity', 1);
+                tooltip.style('opacity', 1)
+                  .html(`<strong>${channel.name}</strong><br/>Box ${regionIndex + 1}<br/>Cells: ${region.cellCount.toLocaleString()}<br/>Density: ${region.density.toFixed(2)} cells/μm³`)
+                  .style('left', (event.pageX + 10) + 'px')
+                  .style('top', (event.pageY - 10) + 'px');
+              })
+              .on('mouseout', function () {
+                d3.select(this).attr('opacity', 0.8);
+                tooltip.style('opacity', 0);
+              });
+          });
+        }
       });
+    } else {
+      // Simple bars (single region or legacy format)
+      statsArray.forEach(channel => {
+        const cellCount = channel.regions && channel.regions.length > 0 
+          ? channel.regions[0].cellCount 
+          : channel.cellCount;
+        const density = channel.regions && channel.regions.length > 0 
+          ? channel.regions[0].density 
+          : channel.density;
+        const color = channel.regions && channel.regions.length > 0 
+          ? channel.regions[0].color 
+          : channel.color;
+
+        g.append('rect')
+          .attr('class', 'bar')
+          .attr('x', xScale(channel.name))
+          .attr('y', yScale(cellCount))
+          .attr('width', xScale.bandwidth())
+          .attr('height', chartHeight - yScale(cellCount))
+          .attr('fill', color)
+          .attr('opacity', 0.8)
+          .on('mouseover', function (event) {
+            d3.select(this).attr('opacity', 1);
+            tooltip.style('opacity', 1)
+              .html(`<strong>${channel.name}</strong><br/>Cells: ${cellCount.toLocaleString()}<br/>Density: ${density.toFixed(2)} cells/μm³`)
+              .style('left', (event.pageX + 10) + 'px')
+              .style('top', (event.pageY - 10) + 'px');
+          })
+          .on('mouseout', function () {
+            d3.select(this).attr('opacity', 0.8);
+            tooltip.style('opacity', 0);
+          });
+      });
+    }
 
     // X axis
     const xAxis = g.append('g')
@@ -340,20 +461,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .style('fill', '#fff')
       .style('font-size', '14px')
       .style('font-weight', 'bold')
-      .text('Cell Distribution in Selected Region');
-
-    // Tooltip
-    const tooltip = d3.select('body').append('div')
-      .attr('class', 'graph-tooltip')
-      .style('opacity', 0)
-      .style('position', 'absolute')
-      .style('background', 'rgba(0, 0, 0, 0.9)')
-      .style('color', '#fff')
-      .style('padding', '8px')
-      .style('border-radius', '4px')
-      .style('pointer-events', 'none')
-      .style('font-size', '12px')
-      .style('z-index', '10000');
+      .text(hasMultipleRegions ? 'Cell Distribution Across Multiple Regions' : 'Cell Distribution in Selected Region');
 
     chartRef.current = { tooltip };
   }, [channelStats]);
@@ -385,21 +493,49 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
     const statsArray = Object.values(channelStats);
     if (statsArray.length === 0) return;
 
-    // Compute correlation matrix
-    const correlationMatrix = [];
+    // Check if we have multiple regions (at least 2)
+    const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
+    
+    // Box colors for comparison
+    const box1Color = '#4ade80'; // Green
+    const box2Color = '#3b82f6'; // Blue
+
+    // Compute correlation matrices for both boxes
+    const correlationMatrix1 = [];
+    const correlationMatrix2 = [];
     const channelNames = statsArray.map(d => d.name);
 
     for (let i = 0; i < statsArray.length; i++) {
-      correlationMatrix[i] = [];
+      correlationMatrix1[i] = [];
+      correlationMatrix2[i] = [];
+      
       for (let j = 0; j < statsArray.length; j++) {
         if (i === j) {
-          correlationMatrix[i][j] = 1.0;
+          correlationMatrix1[i][j] = 1.0;
+          correlationMatrix2[i][j] = 1.0;
         } else {
-          // Pearson correlation
-          const dist1 = statsArray[i].distribution;
-          const dist2 = statsArray[j].distribution;
-          const correlation = calculatePearsonCorrelation(dist1, dist2);
-          correlationMatrix[i][j] = correlation;
+          // Get distributions from first two boxes
+          const dist1Box1 = statsArray[i].regions && statsArray[i].regions[0] 
+            ? statsArray[i].regions[0].distribution 
+            : statsArray[i].distribution;
+          const dist2Box1 = statsArray[j].regions && statsArray[j].regions[0] 
+            ? statsArray[j].regions[0].distribution 
+            : statsArray[j].distribution;
+          
+          const dist1Box2 = statsArray[i].regions && statsArray[i].regions.length > 1 && statsArray[i].regions[1]
+            ? statsArray[i].regions[1].distribution 
+            : dist1Box1;
+          const dist2Box2 = statsArray[j].regions && statsArray[j].regions.length > 1 && statsArray[j].regions[1]
+            ? statsArray[j].regions[1].distribution 
+            : dist2Box1;
+
+          const correlation1 = calculatePearsonCorrelation(dist1Box1, dist2Box1);
+          const correlation2 = hasMultipleRegions 
+            ? calculatePearsonCorrelation(dist1Box2, dist2Box2)
+            : correlation1;
+          
+          correlationMatrix1[i][j] = correlation1;
+          correlationMatrix2[i][j] = correlation2;
         }
       }
     }
@@ -416,32 +552,80 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .padding(0.05);
 
     // Color scale: Viridis (0 to 1)
-    // User requested Viridis and domain starting from 0
     const colorScale = d3.scaleSequential(d3.interpolateViridis)
       .domain([0, 1]);
 
-    // Cells
+    // Cells - split each cell into two halves for two boxes
     for (let i = 0; i < statsArray.length; i++) {
       for (let j = 0; j < statsArray.length; j++) {
-        g.append('rect')
-          .attr('x', xScale(channelNames[j]))
-          .attr('y', yScale(channelNames[i]))
-          .attr('width', xScale.bandwidth())
-          .attr('height', yScale.bandwidth())
-          .attr('fill', colorScale(correlationMatrix[i][j]))
-          .attr('stroke', '#000')
-          .attr('stroke-width', 0.5)
-          .on('mouseover', function (event, d) {
-            d3.select(this).attr('stroke-width', 2);
-            tooltip.style('opacity', 1)
-              .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Correlation: ${correlationMatrix[i][j].toFixed(3)}`)
-              .style('left', (event.pageX + 10) + 'px')
-              .style('top', (event.pageY - 10) + 'px');
-          })
-          .on('mouseout', function () {
-            d3.select(this).attr('stroke-width', 0.5);
-            tooltip.style('opacity', 0);
-          });
+        const cellWidth = xScale.bandwidth();
+        const cellHeight = yScale.bandwidth();
+        
+        if (hasMultipleRegions) {
+          // Split cell into two halves
+          // Left half: Box 1
+          g.append('rect')
+            .attr('x', xScale(channelNames[j]))
+            .attr('y', yScale(channelNames[i]))
+            .attr('width', cellWidth / 2)
+            .attr('height', cellHeight)
+            .attr('fill', colorScale(correlationMatrix1[i][j]))
+            .attr('stroke', box1Color)
+            .attr('stroke-width', 1)
+            .on('mouseover', function (event) {
+              d3.select(this).attr('stroke-width', 2);
+              tooltip.style('opacity', 1)
+                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box 1<br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+            })
+            .on('mouseout', function () {
+              d3.select(this).attr('stroke-width', 1);
+              tooltip.style('opacity', 0);
+            });
+          
+          // Right half: Box 2
+          g.append('rect')
+            .attr('x', xScale(channelNames[j]) + cellWidth / 2)
+            .attr('y', yScale(channelNames[i]))
+            .attr('width', cellWidth / 2)
+            .attr('height', cellHeight)
+            .attr('fill', colorScale(correlationMatrix2[i][j]))
+            .attr('stroke', box2Color)
+            .attr('stroke-width', 1)
+            .on('mouseover', function (event) {
+              d3.select(this).attr('stroke-width', 2);
+              tooltip.style('opacity', 1)
+                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box 2<br/>Correlation: ${correlationMatrix2[i][j].toFixed(3)}`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+            })
+            .on('mouseout', function () {
+              d3.select(this).attr('stroke-width', 1);
+              tooltip.style('opacity', 0);
+            });
+        } else {
+          // Single box - show full cell
+          g.append('rect')
+            .attr('x', xScale(channelNames[j]))
+            .attr('y', yScale(channelNames[i]))
+            .attr('width', cellWidth)
+            .attr('height', cellHeight)
+            .attr('fill', colorScale(correlationMatrix1[i][j]))
+            .attr('stroke', '#000')
+            .attr('stroke-width', 0.5)
+            .on('mouseover', function (event) {
+              d3.select(this).attr('stroke-width', 2);
+              tooltip.style('opacity', 1)
+                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+            })
+            .on('mouseout', function () {
+              d3.select(this).attr('stroke-width', 0.5);
+              tooltip.style('opacity', 0);
+            });
+        }
       }
     }
 
@@ -466,6 +650,9 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .style('font-size', channelNames.length > 15 ? '9px' : '11px');
 
     // Title
+    const titleText = hasMultipleRegions 
+      ? 'Biomarker Co-expression Heatmap (Box 1 vs Box 2)'
+      : 'Biomarker Co-expression Heatmap';
     g.append('text')
       .attr('x', chartWidth / 2)
       .attr('y', -20)
@@ -473,7 +660,47 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .style('fill', '#fff')
       .style('font-size', '14px')
       .style('font-weight', 'bold')
-      .text('Biomarker Co-expression Heatmap');
+      .text(titleText);
+
+    // Legend for two boxes if multiple regions
+    if (hasMultipleRegions) {
+      const legendY = -5;
+      const legendX = chartWidth - 150;
+      
+      // Box 1 legend
+      g.append('rect')
+        .attr('x', legendX)
+        .attr('y', legendY)
+        .attr('width', 12)
+        .attr('height', 12)
+        .attr('fill', 'none')
+        .attr('stroke', box1Color)
+        .attr('stroke-width', 2);
+      
+      g.append('text')
+        .attr('x', legendX + 18)
+        .attr('y', legendY + 9)
+        .style('fill', box1Color)
+        .style('font-size', '11px')
+        .text('Box 1');
+      
+      // Box 2 legend
+      g.append('rect')
+        .attr('x', legendX + 70)
+        .attr('y', legendY)
+        .attr('width', 12)
+        .attr('height', 12)
+        .attr('fill', 'none')
+        .attr('stroke', box2Color)
+        .attr('stroke-width', 2);
+      
+      g.append('text')
+        .attr('x', legendX + 88)
+        .attr('y', legendY + 9)
+        .style('fill', box2Color)
+        .style('font-size', '11px')
+        .text('Box 2');
+    }
 
     // Add color legend (Vertical on the Right)
     const legendWidth = 15;
@@ -652,52 +879,58 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .style('border', '1px solid rgba(255, 255, 255, 0.2)')
       .style('box-shadow', '0 4px 12px rgba(0, 0, 0, 0.5)');
 
+    // Check if we have multiple regions (at least 2)
+    const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
+    
+    // Box colors
+    const box1Color = '#4ade80'; // Green
+    const box2Color = '#3b82f6'; // Blue
+
     // Create kernel density estimation for each channel with adaptive bandwidth
     statsArray.forEach((stat, i) => {
-      if (!stat.distribution || stat.distribution.length === 0) return;
+      // Get data from first two boxes only
+      const region1 = stat.regions && stat.regions.length > 0 ? stat.regions[0] : null;
+      const region2 = stat.regions && stat.regions.length > 1 ? stat.regions[1] : null;
+      
+      if (!region1 || (!region1.distribution || region1.distribution.length === 0)) return;
 
-      // Normalize data to 0-1 range for this specific channel
-      const localMax = stat.max || 1;
-      const normalizedData = stat.distribution.map(v => v / localMax);
-
-      // Adaptive bandwidth based on normalized data
-      const kde = kernelDensityEstimator(kernelEpanechnikov(0.05), yScale.ticks(40));
-      const density = kde(normalizedData);
-
-      // Normalize density width
-      const maxDensity = d3.max(density, d => d[1]);
-      const normalizedDensity = density.map(d => [d[0], d[1] / maxDensity]);
-
-      const bandwidth = xScale.bandwidth() / 2.2;
-      // Fix alignment: Center the violin in the band
       const xPos = xScale(stat.name) + xScale.bandwidth() / 2;
+      const bandwidth = xScale.bandwidth() / 2.2;
 
-      // Create area path
-      const area = d3.area()
+      // Process Box 1 (left side)
+      const localMax1 = region1.max || 1;
+      const normalizedData1 = region1.distribution.map(v => v / localMax1);
+      const kde1 = kernelDensityEstimator(kernelEpanechnikov(0.05), yScale.ticks(40));
+      const density1 = kde1(normalizedData1);
+      const maxDensity1 = d3.max(density1, d => d[1]);
+      const normalizedDensity1 = density1.map(d => [d[0], d[1] / maxDensity1]);
+
+      // Create area path for left side (Box 1)
+      const areaLeft = d3.area()
         .x0(d => xPos - bandwidth * d[1])
-        .x1(d => xPos + bandwidth * d[1])
+        .x1(d => xPos) // Center line
         .y(d => yScale(d[0]))
         .curve(d3.curveCatmullRom.alpha(0.5));
 
-      // Draw violin shape
+      // Draw left violin shape (Box 1)
       g.append('path')
-        .datum(normalizedDensity)
-        .attr('fill', stat.color)
+        .datum(normalizedDensity1)
+        .attr('fill', box1Color)
         .attr('opacity', 0.7)
-        .attr('d', area)
-        .attr('stroke', stat.color)
+        .attr('d', areaLeft)
+        .attr('stroke', box1Color)
         .attr('stroke-width', 1.5)
         .attr('stroke-opacity', 0.9)
         .on('mouseover', function (event) {
           d3.select(this).attr('opacity', 1).attr('stroke-width', 2.5);
           tooltip.style('opacity', 1)
             .html(`
-              <div style="font-weight: bold; margin-bottom: 6px; color: ${stat.color}; font-size: 13px;">
-                ${stat.name}
+              <div style="font-weight: bold; margin-bottom: 6px; color: ${box1Color}; font-size: 13px;">
+                ${stat.name} - Box 1
               </div>
               <div style="line-height: 1.6;">
-                <div><strong>Mean:</strong> ${stat.meanIntensity.toFixed(2)}</div>
-                <div><strong>Max:</strong> ${stat.max.toFixed(2)}</div>
+                <div><strong>Mean:</strong> ${region1.meanIntensity.toFixed(2)}</div>
+                <div><strong>Max:</strong> ${region1.max.toFixed(2)}</div>
                 <div style="margin-top: 4px; font-style: italic; color: #aaa;">Normalized View</div>
               </div>
             `)
@@ -709,54 +942,153 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
           tooltip.style('opacity', 0);
         });
 
-      // Draw quartiles (Normalized)
-      const q1Y = yScale(stat.q1 / localMax);
-      const q2Y = yScale(stat.q2 / localMax);
-      const q3Y = yScale(stat.q3 / localMax);
-      const minY = yScale(stat.min / localMax);
-      const maxY = yScale(stat.max / localMax);
+      // Process Box 2 (right side) if available
+      if (hasMultipleRegions && region2 && region2.distribution && region2.distribution.length > 0) {
+        const localMax2 = region2.max || 1;
+        const normalizedData2 = region2.distribution.map(v => v / localMax2);
+        const kde2 = kernelDensityEstimator(kernelEpanechnikov(0.05), yScale.ticks(40));
+        const density2 = kde2(normalizedData2);
+        const maxDensity2 = d3.max(density2, d => d[1]);
+        const normalizedDensity2 = density2.map(d => [d[0], d[1] / maxDensity2]);
 
-      // Median line
+        // Create area path for right side (Box 2)
+        const areaRight = d3.area()
+          .x0(d => xPos) // Center line
+          .x1(d => xPos + bandwidth * d[1])
+          .y(d => yScale(d[0]))
+          .curve(d3.curveCatmullRom.alpha(0.5));
+
+        // Draw right violin shape (Box 2)
+        g.append('path')
+          .datum(normalizedDensity2)
+          .attr('fill', box2Color)
+          .attr('opacity', 0.7)
+          .attr('d', areaRight)
+          .attr('stroke', box2Color)
+          .attr('stroke-width', 1.5)
+          .attr('stroke-opacity', 0.9)
+          .on('mouseover', function (event) {
+            d3.select(this).attr('opacity', 1).attr('stroke-width', 2.5);
+            tooltip.style('opacity', 1)
+              .html(`
+                <div style="font-weight: bold; margin-bottom: 6px; color: ${box2Color}; font-size: 13px;">
+                  ${stat.name} - Box 2
+                </div>
+                <div style="line-height: 1.6;">
+                  <div><strong>Mean:</strong> ${region2.meanIntensity.toFixed(2)}</div>
+                  <div><strong>Max:</strong> ${region2.max.toFixed(2)}</div>
+                  <div style="margin-top: 4px; font-style: italic; color: #aaa;">Normalized View</div>
+                </div>
+              `)
+              .style('left', (event.pageX + 15) + 'px')
+              .style('top', (event.pageY - 10) + 'px');
+          })
+          .on('mouseout', function () {
+            d3.select(this).attr('opacity', 0.7).attr('stroke-width', 1.5);
+            tooltip.style('opacity', 0);
+          });
+      }
+
+      // Draw quartiles for Box 1 (left side)
+      const q1Y1 = yScale(region1.q1 / localMax1);
+      const q2Y1 = yScale(region1.q2 / localMax1);
+      const q3Y1 = yScale(region1.q3 / localMax1);
+      const minY1 = yScale(region1.min / localMax1);
+      const maxY1 = yScale(region1.max / localMax1);
+
+      // Median line for Box 1 (left side)
       g.append('line')
         .attr('x1', xPos - bandwidth * 1.1)
-        .attr('x2', xPos + bandwidth * 1.1)
-        .attr('y1', q2Y)
-        .attr('y2', q2Y)
-        .attr('stroke', '#fff')
+        .attr('x2', xPos)
+        .attr('y1', q2Y1)
+        .attr('y2', q2Y1)
+        .attr('stroke', box1Color)
         .attr('stroke-width', 2.5)
         .attr('opacity', 0.95);
 
-      // Box plot rectangle
+      // Box plot rectangle for Box 1 (left side)
       g.append('rect')
-        .attr('x', xPos - bandwidth * 0.3)
-        .attr('y', q3Y)
+        .attr('x', xPos - bandwidth * 0.6)
+        .attr('y', q3Y1)
         .attr('width', bandwidth * 0.6)
-        .attr('height', q1Y - q3Y)
+        .attr('height', q1Y1 - q3Y1)
         .attr('fill', 'none')
-        .attr('stroke', '#fff')
+        .attr('stroke', box1Color)
         .attr('stroke-width', 1.5)
         .attr('opacity', 0.6);
 
-      // Whiskers
+      // Whiskers for Box 1
       g.append('line')
-        .attr('x1', xPos)
-        .attr('x2', xPos)
-        .attr('y1', q3Y)
-        .attr('y2', maxY)
-        .attr('stroke', '#fff')
+        .attr('x1', xPos - bandwidth * 0.3)
+        .attr('x2', xPos - bandwidth * 0.3)
+        .attr('y1', q3Y1)
+        .attr('y2', maxY1)
+        .attr('stroke', box1Color)
         .attr('stroke-width', 1)
         .attr('opacity', 0.5)
         .attr('stroke-dasharray', '3,3');
 
       g.append('line')
-        .attr('x1', xPos)
-        .attr('x2', xPos)
-        .attr('y1', q1Y)
-        .attr('y2', minY)
-        .attr('stroke', '#fff')
+        .attr('x1', xPos - bandwidth * 0.3)
+        .attr('x2', xPos - bandwidth * 0.3)
+        .attr('y1', q1Y1)
+        .attr('y2', minY1)
+        .attr('stroke', box1Color)
         .attr('stroke-width', 1)
         .attr('opacity', 0.5)
         .attr('stroke-dasharray', '3,3');
+
+      // Draw quartiles for Box 2 (right side) if available
+      if (hasMultipleRegions && region2) {
+        const localMax2 = region2.max || 1;
+        const q1Y2 = yScale(region2.q1 / localMax2);
+        const q2Y2 = yScale(region2.q2 / localMax2);
+        const q3Y2 = yScale(region2.q3 / localMax2);
+        const minY2 = yScale(region2.min / localMax2);
+        const maxY2 = yScale(region2.max / localMax2);
+
+        // Median line for Box 2 (right side)
+        g.append('line')
+          .attr('x1', xPos)
+          .attr('x2', xPos + bandwidth * 1.1)
+          .attr('y1', q2Y2)
+          .attr('y2', q2Y2)
+          .attr('stroke', box2Color)
+          .attr('stroke-width', 2.5)
+          .attr('opacity', 0.95);
+
+        // Box plot rectangle for Box 2 (right side)
+        g.append('rect')
+          .attr('x', xPos)
+          .attr('y', q3Y2)
+          .attr('width', bandwidth * 0.6)
+          .attr('height', q1Y2 - q3Y2)
+          .attr('fill', 'none')
+          .attr('stroke', box2Color)
+          .attr('stroke-width', 1.5)
+          .attr('opacity', 0.6);
+
+        // Whiskers for Box 2
+        g.append('line')
+          .attr('x1', xPos + bandwidth * 0.3)
+          .attr('x2', xPos + bandwidth * 0.3)
+          .attr('y1', q3Y2)
+          .attr('y2', maxY2)
+          .attr('stroke', box2Color)
+          .attr('stroke-width', 1)
+          .attr('opacity', 0.5)
+          .attr('stroke-dasharray', '3,3');
+
+        g.append('line')
+          .attr('x1', xPos + bandwidth * 0.3)
+          .attr('x2', xPos + bandwidth * 0.3)
+          .attr('y1', q1Y2)
+          .attr('y2', minY2)
+          .attr('stroke', box2Color)
+          .attr('stroke-width', 1)
+          .attr('opacity', 0.5)
+          .attr('stroke-dasharray', '3,3');
+      }
     });
 
     // Statistics text - REMOVED to reduce clutter as requested
@@ -814,6 +1146,9 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .text('Biomarker');
 
     // Title (adjusted position)
+    const titleText = hasMultipleRegions 
+      ? 'Normalized Intensity Distributions (Box 1 vs Box 2)'
+      : 'Normalized Intensity Distributions';
     g.append('text')
       .attr('x', chartWidth / 2)
       .attr('y', -10)
@@ -821,7 +1156,45 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
       .style('fill', '#fff')
       .style('font-size', '16px')
       .style('font-weight', 'bold')
-      .text('Normalized Intensity Distributions');
+      .text(titleText);
+
+    // Legend for two boxes if multiple regions
+    if (hasMultipleRegions) {
+      const legendY = -5;
+      const legendX = chartWidth - 150;
+      
+      // Box 1 legend
+      g.append('rect')
+        .attr('x', legendX)
+        .attr('y', legendY)
+        .attr('width', 12)
+        .attr('height', 12)
+        .attr('fill', box1Color)
+        .attr('opacity', 0.7);
+      
+      g.append('text')
+        .attr('x', legendX + 18)
+        .attr('y', legendY + 9)
+        .style('fill', box1Color)
+        .style('font-size', '11px')
+        .text('Box 1 (Left)');
+      
+      // Box 2 legend
+      g.append('rect')
+        .attr('x', legendX + 90)
+        .attr('y', legendY)
+        .attr('width', 12)
+        .attr('height', 12)
+        .attr('fill', box2Color)
+        .attr('opacity', 0.7);
+      
+      g.append('text')
+        .attr('x', legendX + 108)
+        .attr('y', legendY + 9)
+        .style('fill', box2Color)
+        .style('font-size', '11px')
+        .text('Box 2 (Right)');
+    }
 
     chartRef.current = { tooltip };
   }, [channelStats]);
@@ -1065,7 +1438,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
           </div>
         )}
 
-        {!loading && !error && !selectedRegionData && (
+        {!loading && !error && !selectedRegionData && (!selectedRegionsData || selectedRegionsData.length === 0) && (
           <div style={{
             position: 'absolute',
             top: '50%',
@@ -1080,7 +1453,7 @@ const Graph_Pannel = ({ selectedRegionData, channels = [], selectedRegions = [] 
           </div>
         )}
 
-        {!loading && !error && selectedRegionData && (!channelStats || Object.keys(channelStats).length === 0) && (
+        {!loading && !error && (selectedRegionData || (selectedRegionsData && selectedRegionsData.length > 0)) && (!channelStats || Object.keys(channelStats).length === 0) && (
           <div style={{
             position: 'absolute',
             top: '50%',

@@ -86,6 +86,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
   const selectionModeRef = useRef(false);
   const cuboidRef = useRef(null);
   const cuboidWireframeRef = useRef(null);
+  const cuboidWireframesRef = useRef([]); // Array to store multiple selection boxes
   const isSelectingRef = useRef(false);
   const selectionEndRef = useRef(null);
   const isTogglingRef = useRef(false);
@@ -580,8 +581,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     };
   };
 
-  // Create or update 3D cuboid wireframe in scene
-  const updateCuboidWireframe = (worldBounds) => {
+  // Create or update 3D cuboid wireframe in scene - adds new box to array
+  const updateCuboidWireframe = (worldBounds, isTemporary = false) => {
     try {
       if (!sceneRef.current || !worldBounds) {
         console.warn('Main_View: Cannot update wireframe - scene or bounds missing');
@@ -591,24 +592,6 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       if (!worldBounds.size || !worldBounds.center) {
         console.warn('Main_View: Invalid worldBounds structure:', worldBounds);
         return;
-      }
-
-      // Remove existing wireframe
-      if (cuboidWireframeRef.current) {
-        try {
-          if (sceneRef.current.children.includes(cuboidWireframeRef.current)) {
-            sceneRef.current.remove(cuboidWireframeRef.current);
-          }
-          if (cuboidWireframeRef.current.geometry) {
-            cuboidWireframeRef.current.geometry.dispose();
-          }
-          if (cuboidWireframeRef.current.material) {
-            cuboidWireframeRef.current.material.dispose();
-          }
-        } catch (err) {
-          console.error('Main_View: Error removing existing wireframe:', err);
-        }
-        cuboidWireframeRef.current = null;
       }
 
       // Create new wireframe cuboid
@@ -636,7 +619,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         color: 0x00ff00,
         linewidth: 2,
         transparent: true,
-        opacity: 0.8
+        opacity: isTemporary ? 0.6 : 0.8
       });
       const wireframe = new THREE.LineSegments(boxEdges, boxMaterial);
 
@@ -647,8 +630,36 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         wireframe.position.set(0, 0, 0);
       }
 
+      // Mark as temporary if needed
+      if (isTemporary) {
+        wireframe.userData.isTemporary = true;
+      }
+
       sceneRef.current.add(wireframe);
-      cuboidWireframeRef.current = wireframe;
+      
+      // If not temporary, add to array (keep all boxes visible)
+      if (!isTemporary) {
+        cuboidWireframesRef.current.push(wireframe);
+        cuboidWireframeRef.current = wireframe;
+      } else {
+        // For temporary wireframes during selection, replace the previous temporary one
+        if (cuboidWireframeRef.current && cuboidWireframeRef.current.userData.isTemporary) {
+          try {
+            if (sceneRef.current.children.includes(cuboidWireframeRef.current)) {
+              sceneRef.current.remove(cuboidWireframeRef.current);
+            }
+            if (cuboidWireframeRef.current.geometry) {
+              cuboidWireframeRef.current.geometry.dispose();
+            }
+            if (cuboidWireframeRef.current.material) {
+              cuboidWireframeRef.current.material.dispose();
+            }
+          } catch (err) {
+            console.error('Main_View: Error removing temporary wireframe:', err);
+          }
+        }
+        cuboidWireframeRef.current = wireframe;
+      }
 
       // Store cuboid info
       cuboidRef.current = {
@@ -954,15 +965,16 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           currentCuboidDepth = cuboidDepth;
           console.log('Main_View: Selection started at:', selectionStartPos, 'depth:', currentCuboidDepth);
 
-          // Clear previous cuboid
-          if (cuboidWireframeRef.current && sceneRef.current) {
+          // Don't clear previous cuboids - we want to keep all selections visible
+          // Only clear temporary wireframe if it exists
+          if (cuboidWireframeRef.current && cuboidWireframeRef.current.userData.isTemporary && sceneRef.current) {
             try {
               sceneRef.current.remove(cuboidWireframeRef.current);
               if (cuboidWireframeRef.current.geometry) cuboidWireframeRef.current.geometry.dispose();
               if (cuboidWireframeRef.current.material) cuboidWireframeRef.current.material.dispose();
               cuboidWireframeRef.current = null;
             } catch (err) {
-              console.error('Main_View: Error clearing previous cuboid:', err);
+              console.error('Main_View: Error clearing temporary cuboid:', err);
             }
           }
         } else {
@@ -999,8 +1011,22 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
           if (worldBounds) {
             try {
-              // Keep wireframe visible
-              updateCuboidWireframe(worldBounds);
+              // Remove temporary wireframe first
+              if (cuboidWireframeRef.current && cuboidWireframeRef.current.userData.isTemporary) {
+                try {
+                  if (sceneRef.current && sceneRef.current.children.includes(cuboidWireframeRef.current)) {
+                    sceneRef.current.remove(cuboidWireframeRef.current);
+                  }
+                  if (cuboidWireframeRef.current.geometry) cuboidWireframeRef.current.geometry.dispose();
+                  if (cuboidWireframeRef.current.material) cuboidWireframeRef.current.material.dispose();
+                  cuboidWireframeRef.current = null;
+                } catch (err) {
+                  console.error('Main_View: Error removing temporary wireframe:', err);
+                }
+              }
+
+              // Keep wireframe visible (add to array, not temporary)
+              updateCuboidWireframe(worldBounds, false);
 
               // Extract and send selection data
               console.log('Main_View: Calling handleSelectionComplete...');
@@ -1047,7 +1073,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
           if (worldBounds) {
             try {
-              updateCuboidWireframe(worldBounds);
+              // Update temporary wireframe during selection (will be replaced on completion)
+              updateCuboidWireframe(worldBounds, true);
               setCuboidCenter(worldBounds.center);
               setCuboidSize(worldBounds.size);
             } catch (err) {
@@ -1084,7 +1111,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           currentCuboidDepth = Math.max(0.01, Math.min(1.0, currentCuboidDepth + depthDelta));
           setCuboidDepth(currentCuboidDepth);
 
-          // Update wireframe with new depth
+          // Update wireframe with new depth (temporary only)
           const endPos = selectionEndRef.current || selectionStartPos;
           const worldBounds = getWorldBoundsFromSelection(
             selectionStartPos.x,
@@ -1096,11 +1123,29 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
           if (worldBounds) {
             try {
-              updateCuboidWireframe(worldBounds);
+              // Only update temporary wireframe during selection, don't add to array
+              updateCuboidWireframe(worldBounds, true);
               setCuboidCenter(worldBounds.center);
               setCuboidSize(worldBounds.size);
             } catch (err) {
               console.error('Main_View: Error updating wireframe on wheel:', err);
+            }
+          }
+        } else if (selectionModeRef.current && cuboidWireframesRef.current.length > 0) {
+          // If selection mode is active and we have boxes, move the last one in Z direction
+          e.preventDefault();
+          const zDelta = e.deltaY * 0.001;
+          
+          // Move only the last (most recent) box in Z direction
+          const lastBox = cuboidWireframesRef.current[cuboidWireframesRef.current.length - 1];
+          if (lastBox && !lastBox.userData.isTemporary) {
+            lastBox.position.z += zDelta;
+            
+            // Also update cuboidRef if it exists
+            if (cuboidRef.current) {
+              cuboidRef.current.center.z += zDelta;
+              cuboidRef.current.min.z += zDelta;
+              cuboidRef.current.max.z += zDelta;
             }
           }
         } else {
@@ -1254,6 +1299,22 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       channelDataCacheRef.current.clear();
       channelConfigsRef.current.clear();
       lodStateRef.current = { lastSampling: null, lastUpdate: 0 };
+
+      // Cleanup all selection boxes
+      cuboidWireframesRef.current.forEach((wireframe) => {
+        if (wireframe && sceneRef.current) {
+          try {
+            if (sceneRef.current.children.includes(wireframe)) {
+              sceneRef.current.remove(wireframe);
+            }
+            if (wireframe.geometry) wireframe.geometry.dispose();
+            if (wireframe.material) wireframe.material.dispose();
+          } catch (err) {
+            console.error('Main_View: Error disposing wireframe:', err);
+          }
+        }
+      });
+      cuboidWireframesRef.current = [];
 
       if (msaaRenderTargetRef.current) {
         msaaRenderTargetRef.current.dispose();
