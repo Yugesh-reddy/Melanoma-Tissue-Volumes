@@ -958,83 +958,45 @@ const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
       overflow: 'hidden',
       position: 'relative'
     }}>
-      <h3 style={{
-        marginTop: 0,
-        marginBottom: '5px',
-        fontSize: '14px',
-        color: 'white',
-        position: 'absolute',
-        top: '5px',
-        left: '10px',
-        zIndex: 100,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-      }}>
-        {/* Composite Glyph: Magnifying glass + 3D Cube */}
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
-          {/* 3D Cube */}
-          <path d="M12 2L4 6v8l8 4 8-4V6l-8-4z" stroke="#4ade80" strokeWidth="1.5" fill="rgba(74, 222, 128, 0.15)" />
-          <path d="M4 6l8 4 8-4M12 10v8" stroke="#4ade80" strokeWidth="1.5" strokeLinecap="round" />
-          {/* Magnifying glass overlay */}
-          <circle cx="17" cy="17" r="4" stroke="#fff" strokeWidth="1.5" fill="rgba(0,0,0,0.5)" />
-          <line x1="20" y1="20" x2="23" y2="23" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-        <span style={{ color: '#4ade80' }}>Local View</span>
-        {/* Info Button */}
-        {selectedRegionData && sectionInfo && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowInfoModal(!showInfoModal);
-            }}
-            style={{
-              background: 'transparent',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
-              borderRadius: '50%',
-              width: '20px',
-              height: '20px',
-              cursor: 'pointer',
-              color: '#fff',
-              fontSize: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-              transition: 'all 0.2s',
-              lineHeight: '1'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = 'transparent';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-            }}
-            title="Show selection information"
-          >
-            ⓘ
-          </button>
-        )}
-      </h3>
-
-      {/* Placeholder when no selection */}
-      {!selectedRegionData && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          color: '#666',
-          fontSize: '12px',
-          textAlign: 'center',
-          zIndex: 50,
-          pointerEvents: 'none'
-        }}>
-          <div>No selection made</div>
-          <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
-        </div>
+      {/* Info Button - Floating in top right */}
+      {selectedRegionData && sectionInfo && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowInfoModal(!showInfoModal);
+          }}
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '8px',
+            zIndex: 100,
+            background: 'rgba(0,0,0,0.6)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            borderRadius: '50%',
+            width: '24px',
+            height: '24px',
+            cursor: 'pointer',
+            color: '#fff',
+            fontSize: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0,
+            transition: 'all 0.2s',
+            lineHeight: '1'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.background = 'rgba(74, 222, 128, 0.3)';
+            e.target.style.borderColor = '#4ade80';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.background = 'rgba(0,0,0,0.6)';
+            e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+          }}
+          title="Show selection information"
+        >
+          ⓘ
+        </button>
       )}
 
       {/* Info Modal */}
@@ -1165,8 +1127,8 @@ const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
   );
 };
 
-// Main wrapper component with tabs support
-const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) => {
+// Main wrapper component with tabs support - UI similar to Graph Panel
+const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], onRemoveSelection, onClearAllSelections }) => {
   // Support both array and single selection for backward compatibility
   const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
@@ -1174,14 +1136,6 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
   // Debug: Log regions array
   useEffect(() => {
     console.log('Local_View: regionsArray length:', regionsArray.length);
-    console.log('Local_View: regionsArray:', regionsArray);
-    regionsArray.forEach((region, index) => {
-      console.log(`Local_View: Region ${index}:`, {
-        id: region.id,
-        hasBounds: !!region.bounds,
-        bounds: region.bounds
-      });
-    });
   }, [regionsArray]);
 
   // Update active tab when new selection is added
@@ -1192,7 +1146,161 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
     }
   }, [regionsArray.length]);
 
-  // If no selections, show placeholder
+  // Ensure activeTabIndex is valid
+  useEffect(() => {
+    if (activeTabIndex >= regionsArray.length && regionsArray.length > 0) {
+      setActiveTabIndex(regionsArray.length - 1);
+    }
+  }, [activeTabIndex, regionsArray.length]);
+
+  // Handle removing a selection
+  const handleRemoveTab = (e, selectionId, index) => {
+    e.stopPropagation();
+    if (onRemoveSelection) {
+      onRemoveSelection(selectionId);
+      // Adjust active tab if needed
+      if (index <= activeTabIndex && activeTabIndex > 0) {
+        setActiveTabIndex(activeTabIndex - 1);
+      }
+    }
+  };
+
+  // Header component (shared between empty and filled states)
+  const Header = () => (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '8px 12px',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+      flexShrink: 0,
+      zIndex: 10
+    }}>
+      {/* Title with composite glyph */}
+      <h3 style={{
+        margin: 0,
+        fontSize: '14px',
+        color: 'white',
+        fontWeight: '500',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        flexShrink: 0
+      }}>
+        {/* Composite Glyph: Magnifying glass + 3D Cube */}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
+          <path d="M12 2L4 6v8l8 4 8-4V6l-8-4z" stroke="#4ade80" strokeWidth="1.5" fill="rgba(74, 222, 128, 0.15)" />
+          <path d="M4 6l8 4 8-4M12 10v8" stroke="#4ade80" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="17" cy="17" r="4" stroke="#fff" strokeWidth="1.5" fill="rgba(0,0,0,0.5)" />
+          <line x1="20" y1="20" x2="23" y2="23" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        <span style={{ color: '#4ade80' }}>Local View</span>
+      </h3>
+
+      {/* Tabs/Toggle buttons - same line as title */}
+      {regionsArray.length > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '3px',
+          background: 'rgba(255, 255, 255, 0.1)',
+          borderRadius: '4px',
+          maxWidth: '60%',
+          overflowX: 'auto',
+          overflowY: 'hidden'
+        }}>
+          {regionsArray.map((region, index) => (
+            <div
+              key={region.id || index}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                padding: '4px 6px',
+                background: activeTabIndex === index ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onClick={() => setActiveTabIndex(index)}
+            >
+              {/* Box indicator */}
+              <div style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '2px',
+                backgroundColor: activeTabIndex === index ? '#4ade80' : 'rgba(255,255,255,0.5)',
+                flexShrink: 0
+              }} />
+              <span style={{ 
+                fontSize: '11px', 
+                color: activeTabIndex === index ? '#4ade80' : 'rgba(255,255,255,0.7)',
+                fontWeight: activeTabIndex === index ? '600' : '400',
+                whiteSpace: 'nowrap'
+              }}>
+                Box {index + 1}
+              </span>
+              {/* Close button */}
+              <button
+                onClick={(e) => handleRemoveTab(e, region.id, index)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: '0 2px',
+                  cursor: 'pointer',
+                  color: activeTabIndex === index ? '#4ade80' : 'rgba(255,255,255,0.5)',
+                  fontSize: '12px',
+                  lineHeight: '1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: 0.7,
+                  transition: 'opacity 0.2s'
+                }}
+                onMouseEnter={(e) => e.target.style.opacity = '1'}
+                onMouseLeave={(e) => e.target.style.opacity = '0.7'}
+                title={`Remove Box ${index + 1}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          
+          {/* Clear All button - only show if more than 1 selection */}
+          {regionsArray.length > 1 && onClearAllSelections && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClearAllSelections();
+              }}
+              style={{
+                background: 'rgba(255, 100, 100, 0.2)',
+                border: 'none',
+                borderRadius: '3px',
+                padding: '4px 8px',
+                cursor: 'pointer',
+                color: '#ff6b6b',
+                fontSize: '10px',
+                fontWeight: '500',
+                marginLeft: '4px',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.target.style.background = 'rgba(255, 100, 100, 0.4)'}
+              onMouseLeave={(e) => e.target.style.background = 'rgba(255, 100, 100, 0.2)'}
+              title="Clear all selections"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // If no selections, show placeholder with header
   if (regionsArray.length === 0) {
     return (
       <div style={{
@@ -1200,38 +1308,33 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
         width: '100%',
         backgroundColor: '#000000',
         border: '1px solid #444',
-        padding: '1px',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
         overflow: 'hidden',
         position: 'relative'
       }}>
+        <Header />
         <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          color: '#666',
-          fontSize: '12px',
-          textAlign: 'center',
-          zIndex: 50,
-          pointerEvents: 'none'
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
         }}>
-          <div>No selection made</div>
-          <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
+          <div style={{
+            color: '#666',
+            fontSize: '12px',
+            textAlign: 'center',
+            pointerEvents: 'none'
+          }}>
+            <div>No selection made</div>
+            <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // If only one selection, show it without tabs
-  if (regionsArray.length === 1) {
-    return <LocalViewContent selectedRegionData={regionsArray[0]} channels={channels} />;
-  }
-
-  // Multiple selections - show tabs
+  // Selections available - show header with tabs and content
   return (
     <div style={{
       height: '100%',
@@ -1242,51 +1345,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
       flexDirection: 'column',
       overflow: 'hidden'
     }}>
-      {/* Tabs Header */}
-      <div style={{
-        display: 'flex',
-        backgroundColor: '#1a1a1a',
-        borderBottom: '1px solid #444',
-        padding: '0',
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        flexShrink: 0,
-        zIndex: 10
-      }}>
-        {regionsArray.map((region, index) => (
-          <button
-            key={region.id || index}
-            onClick={() => setActiveTabIndex(index)}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: activeTabIndex === index ? '#333' : 'transparent',
-              color: activeTabIndex === index ? '#fff' : '#aaa',
-              border: 'none',
-              borderBottom: activeTabIndex === index ? '2px solid #4ade80' : '2px solid transparent',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: activeTabIndex === index ? 'bold' : 'normal',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s',
-              minWidth: '60px'
-            }}
-            onMouseEnter={(e) => {
-              if (activeTabIndex !== index) {
-                e.target.style.backgroundColor = '#222';
-                e.target.style.color = '#fff';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (activeTabIndex !== index) {
-                e.target.style.backgroundColor = 'transparent';
-                e.target.style.color = '#aaa';
-              }
-            }}
-          >
-            Tab {index + 1}
-          </button>
-        ))}
-      </div>
+      <Header />
 
       {/* Tab Content */}
       <div style={{

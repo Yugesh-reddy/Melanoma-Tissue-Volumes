@@ -79,6 +79,18 @@ function App() {
     });
   }, []);
 
+  // Function to remove a selection by ID
+  const handleRemoveSelection = useCallback((selectionId) => {
+    console.log(`App: Removing selection with ID: ${selectionId}`);
+    setSelectedRegionsData((prev) => prev.filter((sel) => sel.id !== selectionId));
+  }, []);
+
+  // Function to clear all selections
+  const handleClearAllSelections = useCallback(() => {
+    console.log('App: Clearing all selections');
+    setSelectedRegionsData([]);
+  }, []);
+
   const buildAggregatedChannels = useCallback((regions) => {
     return regions.flatMap((region) =>
       region.channels.map((channel, index) => ({
@@ -237,7 +249,12 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Local_View selectedRegionsData={selectedRegionsData} channels={channels} />
+              <Local_View 
+                selectedRegionsData={selectedRegionsData} 
+                channels={channels} 
+                onRemoveSelection={handleRemoveSelection}
+                onClearAllSelections={handleClearAllSelections}
+              />
             </div>
             {/* Graph Panel - 33.3% width */}
             <div style={{
