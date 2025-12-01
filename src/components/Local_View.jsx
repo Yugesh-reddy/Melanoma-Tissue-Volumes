@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { loadChannelData } from '../hooks/useChannelData';
 
@@ -1161,6 +1161,25 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
   // Support both array and single selection for backward compatibility
   const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [closedTabIds, setClosedTabIds] = useState(new Set());
+
+  // Create mapping from region to regionId for consistent identification
+  const regionIdMap = useMemo(() => {
+    const map = new Map();
+    regionsArray.forEach((region, index) => {
+      const regionId = region.id || index;
+      map.set(region, regionId);
+    });
+    return map;
+  }, [regionsArray]);
+
+  // Filter out closed tabs
+  const visibleRegions = useMemo(() => {
+    return regionsArray.filter((region) => {
+      const regionId = regionIdMap.get(region);
+      return regionId !== undefined && !closedTabIds.has(regionId);
+    });
+  }, [regionsArray, closedTabIds, regionIdMap]);
 
   // Debug: Log regions array
   useEffect(() => {
@@ -1177,14 +1196,45 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
 
   // Update active tab when new selection is added
   useEffect(() => {
-    if (regionsArray.length > 0) {
-      // Set active tab to the newest selection (last in array)
-      setActiveTabIndex(regionsArray.length - 1);
+    if (visibleRegions.length > 0) {
+      // Set active tab to the newest selection (last in visible array)
+      const newIndex = visibleRegions.length - 1;
+      setActiveTabIndex(newIndex);
     }
-  }, [regionsArray.length]);
+  }, [visibleRegions.length]);
+
+  // Handle closing a tab
+  const handleCloseTab = (e, region) => {
+    e.stopPropagation(); // Prevent tab activation when clicking close button
+    
+    const regionId = regionIdMap.get(region);
+    if (regionId === undefined) return;
+    
+    // Find current visible index of this tab
+    const currentVisibleIndex = visibleRegions.findIndex(r => {
+      const rId = regionIdMap.get(r);
+      return rId === regionId;
+    });
+    
+    // Adjust active tab index if we're closing the active tab
+    if (activeTabIndex === currentVisibleIndex) {
+      const remainingCount = visibleRegions.length - 1;
+      if (remainingCount > 0) {
+        // Switch to the previous tab, or stay at the same index if it becomes the last
+        const newIndex = Math.min(currentVisibleIndex, remainingCount - 1);
+        setActiveTabIndex(newIndex);
+      }
+    } else if (activeTabIndex > currentVisibleIndex) {
+      // If we're closing a tab before the active one, decrease the active index
+      setActiveTabIndex(prev => prev - 1);
+    }
+    
+    // Add to closed tabs
+    setClosedTabIds(prev => new Set([...prev, regionId]));
+  };
 
   // If no selections, show placeholder
-  if (regionsArray.length === 0) {
+  if (visibleRegions.length === 0) {
     return (
       <div style={{
         height: '100%',
@@ -1218,8 +1268,8 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
   }
 
   // If only one selection, show it without tabs
-  if (regionsArray.length === 1) {
-    return <LocalViewContent selectedRegionData={regionsArray[0]} channels={channels} />;
+  if (visibleRegions.length === 1) {
+    return <LocalViewContent selectedRegionData={visibleRegions[0]} channels={channels} />;
   }
 
   // Multiple selections - show tabs
@@ -1244,39 +1294,84 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
         flexShrink: 0,
         zIndex: 10
       }}>
-        {regionsArray.map((region, index) => (
-          <button
-            key={region.id || index}
-            onClick={() => setActiveTabIndex(index)}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: activeTabIndex === index ? '#333' : 'transparent',
-              color: activeTabIndex === index ? '#fff' : '#aaa',
-              border: 'none',
-              borderBottom: activeTabIndex === index ? '2px solid #4ade80' : '2px solid transparent',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: activeTabIndex === index ? 'bold' : 'normal',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s',
-              minWidth: '60px'
-            }}
-            onMouseEnter={(e) => {
-              if (activeTabIndex !== index) {
-                e.target.style.backgroundColor = '#222';
-                e.target.style.color = '#fff';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (activeTabIndex !== index) {
-                e.target.style.backgroundColor = 'transparent';
-                e.target.style.color = '#aaa';
-              }
-            }}
-          >
-            Tab {index + 1}
-          </button>
-        ))}
+        {visibleRegions.map((region, index) => {
+          const regionId = regionIdMap.get(region);
+          
+          return (
+            <div
+              key={regionId || `tab-${index}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                backgroundColor: activeTabIndex === index ? '#333' : 'transparent',
+                borderBottom: activeTabIndex === index ? '2px solid #4ade80' : '2px solid transparent',
+                transition: 'all 0.2s',
+                position: 'relative'
+              }}
+              onMouseEnter={(e) => {
+                if (activeTabIndex !== index) {
+                  e.currentTarget.style.backgroundColor = '#222';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (activeTabIndex !== index) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
+            >
+              <button
+                onClick={() => setActiveTabIndex(index)}
+                style={{
+                  padding: '8px 16px',
+                  paddingRight: '8px',
+                  backgroundColor: 'transparent',
+                  color: activeTabIndex === index ? '#fff' : '#aaa',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: activeTabIndex === index ? 'bold' : 'normal',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s',
+                  minWidth: '60px'
+                }}
+              >
+                Tab {index + 1}
+              </button>
+              <button
+                onClick={(e) => handleCloseTab(e, region)}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: 'transparent',
+                  color: activeTabIndex === index ? '#fff' : '#aaa',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  lineHeight: '1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '3px',
+                  transition: 'all 0.2s',
+                  marginRight: '4px'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = activeTabIndex === index ? '#ff4444' : '#ff6666';
+                  e.target.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = 'transparent';
+                  e.target.style.color = activeTabIndex === index ? '#fff' : '#aaa';
+                }}
+                title="Close tab"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {/* Tab Content */}
@@ -1285,7 +1380,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) 
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {regionsArray.map((region, index) => {
+        {visibleRegions.map((region, index) => {
           const isActive = activeTabIndex === index;
           return (
             <div
