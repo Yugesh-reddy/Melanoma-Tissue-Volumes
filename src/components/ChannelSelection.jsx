@@ -565,7 +565,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
               </div>
             </div>
 
-            {/* Color Square */}
+            {/* Color Picker */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
               <span style={{ 
                 fontSize: '28px', 
@@ -574,10 +574,10 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
               }}>🎨</span>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
-                  Color Square
+                  Color Picker <span style={{ fontSize: '11px', color: '#4ade80' }}>(✏️ icon)</span>
                 </div>
                 <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
-                  Click to change channel display color
+                  Click the square with pencil to change color
                 </div>
               </div>
             </div>
@@ -699,18 +699,6 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                 )}
               </div>
 
-              {/* Color Square */}
-              <div
-                style={{
-                  width: '16px',
-                  height: '16px',
-                  backgroundColor: channel.color,
-                  borderRadius: '3px',
-                  border: '1px solid #555',
-                  flexShrink: 0
-                }}
-              />
-
               {/* Channel Name Dropdown */}
               <select
                 value={channel.channelIndex}
@@ -734,7 +722,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                 ))}
               </select>
 
-              {/* Color Picker (hidden, but accessible via color square) */}
+              {/* Color Picker - Clearly marked with edit icon */}
               <input
                 type="color"
                 value={channel.color}
@@ -751,15 +739,40 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
               <div
                 onClick={() => document.getElementById(`color-picker-${channel.id}`).click()}
                 style={{
-                  width: '20px',
-                  height: '20px',
+                  width: '24px',
+                  height: '24px',
                   backgroundColor: channel.color,
                   borderRadius: '4px',
-                  border: '1px solid #555',
+                  border: '2px solid rgba(255,255,255,0.3)',
                   cursor: 'pointer',
-                  flexShrink: 0
+                  flexShrink: 0,
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.3)'
                 }}
-              />
+                title="Click to change color"
+              >
+                {/* Paint brush/edit icon overlay */}
+                <svg 
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 16 16" 
+                  fill="none" 
+                  style={{ 
+                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <path 
+                    d="M13.5 2.5L11 5L11.5 5.5L14 3L13.5 2.5Z M10.5 5.5L3 13V14H4L11.5 6.5L10.5 5.5Z M2 12L3 14L4.5 12.5L3.5 11.5L2 12Z" 
+                    fill="white" 
+                    stroke="rgba(0,0,0,0.5)"
+                    strokeWidth="0.5"
+                  />
+                </svg>
+              </div>
 
               {/* Threshold Range Slider (Dual Range with Value Labels) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '160px', flex: 1, position: 'relative' }}>
