@@ -442,6 +442,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       keys['shiftleft'] ||
       keys['shiftright'];
     const speed = isFast ? FAST_MOVE_SPEED : MOVE_SPEED;
+    const zoomSpeed = isFast ? 0.03 : 0.015;
     const state = cameraStateRef.current;
     let moved = false;
 
@@ -454,36 +455,57 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       state.panOffset.z += vector.z;
     };
 
-    if (keys.w || keys.arrowup) {
-      camera.getWorldDirection(forward);
-      applyOffset(forward.multiplyScalar(speed));
-      moved = true;
-    }
-    if (keys.s || keys.arrowdown) {
-      camera.getWorldDirection(forward);
-      applyOffset(forward.multiplyScalar(-speed));
-      moved = true;
-    }
+    // Gaming-style controls:
+    // A/D or Left/Right arrows: move left/right
+    // W/S or Up/Down arrows: move up/down
+    // Z/X: zoom in/out
+
+    // A - Move Left
     if (keys.a || keys.arrowleft) {
       camera.getWorldDirection(forward);
       offset.crossVectors(camera.up, forward).normalize().multiplyScalar(speed);
       applyOffset(offset);
       moved = true;
     }
+    // D - Move Right
     if (keys.d || keys.arrowright) {
       camera.getWorldDirection(forward);
       offset.crossVectors(camera.up, forward).normalize().multiplyScalar(-speed);
       applyOffset(offset);
       moved = true;
     }
-    if (keys.q) {
+    // W - Move Up
+    if (keys.w || keys.arrowup) {
       offset.copy(camera.up).normalize().multiplyScalar(speed);
       applyOffset(offset);
       moved = true;
     }
-    if (keys.e) {
+    // S - Move Down
+    if (keys.s || keys.arrowdown) {
       offset.copy(camera.up).normalize().multiplyScalar(-speed);
       applyOffset(offset);
+      moved = true;
+    }
+    // Z - Zoom In
+    if (keys.z) {
+      state.distance = clamp(state.distance - zoomSpeed, 0.1, 20);
+      moved = true;
+    }
+    // X - Zoom Out
+    if (keys.x) {
+      state.distance = clamp(state.distance + zoomSpeed, 0.1, 20);
+      moved = true;
+    }
+    // Q - Move Forward (into screen)
+    if (keys.q) {
+      camera.getWorldDirection(forward);
+      applyOffset(forward.multiplyScalar(speed));
+      moved = true;
+    }
+    // E - Move Backward (out of screen)
+    if (keys.e) {
+      camera.getWorldDirection(forward);
+      applyOffset(forward.multiplyScalar(-speed));
       moved = true;
     }
 
