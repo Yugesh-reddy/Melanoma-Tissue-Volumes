@@ -369,9 +369,32 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     renderScene();
   }, [createChannelVisualization, getDesiredSampling, renderScene]);
 
-  // Clear selection helper function
+  // Clear selection helper function - clears ALL selection boxes
   const clearSelection = useCallback(() => {
-    // Remove wireframe from scene
+    // Remove ALL wireframes from scene (the array of all selections)
+    if (cuboidWireframesRef.current && cuboidWireframesRef.current.length > 0 && sceneRef.current) {
+      console.log(`Main_View: Clearing ${cuboidWireframesRef.current.length} selection box(es)`);
+      cuboidWireframesRef.current.forEach((wireframe, index) => {
+        try {
+          if (wireframe && sceneRef.current) {
+            if (sceneRef.current.children.includes(wireframe)) {
+              sceneRef.current.remove(wireframe);
+            }
+            if (wireframe.geometry) {
+              wireframe.geometry.dispose();
+            }
+            if (wireframe.material) {
+              wireframe.material.dispose();
+            }
+          }
+        } catch (err) {
+          console.error(`Main_View: Error clearing wireframe ${index}:`, err);
+        }
+      });
+      cuboidWireframesRef.current = [];
+    }
+    
+    // Also remove single wireframe reference if it exists separately
     if (cuboidWireframeRef.current && sceneRef.current) {
       try {
         if (sceneRef.current.children.includes(cuboidWireframeRef.current)) {
@@ -384,7 +407,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           cuboidWireframeRef.current.material.dispose();
         }
       } catch (err) {
-        console.error('Main_View: Error clearing wireframe:', err);
+        console.error('Main_View: Error clearing single wireframe:', err);
       }
       cuboidWireframeRef.current = null;
     }
@@ -404,7 +427,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       onSelectionChange(null);
     }
     
-    console.log('Main_View: Selection cleared');
+    console.log('Main_View: All selections cleared');
   }, [onSelectionChange]);
 
   // Reset camera to initial state AND clear selection
