@@ -494,16 +494,22 @@ const Direction_view = ({ channels = [] }) => {
         width: '100%',
         backgroundColor: '#000000',
         border: '1px solid #444',
-        padding: '1px',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         boxSizing: 'border-box'
       }}
     >
+      {/* Header - Similar to Graph Panel and Local View */}
       <div style={{
-        margin: '8px',
-        flexShrink: 0
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '8px 12px',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        flexShrink: 0,
+        zIndex: 10
       }}>
         <h3
           style={{
@@ -531,15 +537,17 @@ const Direction_view = ({ channels = [] }) => {
           </svg>
           <span style={{ color: '#4ade80' }}>Direction View</span>
         </h3>
-        {/* One-line explanation of arrows */}
+        
+        {/* Info text on the right */}
         <div style={{
-          fontSize: '11px',
-          color: 'rgba(255, 255, 255, 0.6)',
-          marginTop: '4px',
+          fontSize: '10px',
+          color: 'rgba(255, 255, 255, 0.5)',
           fontStyle: 'italic',
-          marginLeft: '30px'
+          maxWidth: '180px',
+          textAlign: 'right',
+          lineHeight: '1.3'
         }}>
-          Arrows show principal direction of each channel's high-intensity regions
+          Arrows show principal direction of high-intensity regions
         </div>
       </div>
       <div

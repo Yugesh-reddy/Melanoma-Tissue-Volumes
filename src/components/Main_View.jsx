@@ -67,7 +67,7 @@ const getConfigSignature = (config) =>
     config.opacity ?? ''
   ].join('|');
 
-const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initialSelectionBounds }) => {
+const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initialSelectionBounds, selectedRegionsData = [] }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -114,6 +114,72 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
   useEffect(() => {
     selectionEndRef.current = selectionEnd;
   }, [selectionEnd]);
+
+  // Sync wireframes with selectedRegionsData from App.jsx
+  // When selections are removed from Local View, remove corresponding wireframes here
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    
+    const currentWireframeCount = cuboidWireframesRef.current.length;
+    const selectionCount = selectedRegionsData ? selectedRegionsData.length : 0;
+    
+    console.log(`Main_View: Syncing wireframes - wireframes: ${currentWireframeCount}, selections: ${selectionCount}`);
+    
+    // If selections were cleared (reset or clear all)
+    if (selectionCount === 0 && currentWireframeCount > 0) {
+      console.log('Main_View: All selections cleared, removing all wireframes');
+      cuboidWireframesRef.current.forEach((wireframe) => {
+        try {
+          if (wireframe && sceneRef.current) {
+            if (sceneRef.current.children.includes(wireframe)) {
+              sceneRef.current.remove(wireframe);
+            }
+            if (wireframe.geometry) wireframe.geometry.dispose();
+            if (wireframe.material) wireframe.material.dispose();
+          }
+        } catch (err) {
+          console.error('Main_View: Error removing wireframe:', err);
+        }
+      });
+      cuboidWireframesRef.current = [];
+      cuboidWireframeRef.current = null;
+      cuboidRef.current = null;
+      currentSelectionBoundsRef.current = null;
+      setCuboidCenter(null);
+      setCuboidSize(null);
+    }
+    // If some selections were removed (tab closed)
+    else if (selectionCount < currentWireframeCount) {
+      console.log(`Main_View: ${currentWireframeCount - selectionCount} selection(s) removed, trimming wireframes`);
+      // Remove excess wireframes from the end
+      const wireframesToRemove = cuboidWireframesRef.current.slice(selectionCount);
+      wireframesToRemove.forEach((wireframe) => {
+        try {
+          if (wireframe && sceneRef.current) {
+            if (sceneRef.current.children.includes(wireframe)) {
+              sceneRef.current.remove(wireframe);
+            }
+            if (wireframe.geometry) wireframe.geometry.dispose();
+            if (wireframe.material) wireframe.material.dispose();
+          }
+        } catch (err) {
+          console.error('Main_View: Error removing wireframe:', err);
+        }
+      });
+      cuboidWireframesRef.current = cuboidWireframesRef.current.slice(0, selectionCount);
+      
+      // Update current wireframe ref to last remaining one
+      if (cuboidWireframesRef.current.length > 0) {
+        cuboidWireframeRef.current = cuboidWireframesRef.current[cuboidWireframesRef.current.length - 1];
+      } else {
+        cuboidWireframeRef.current = null;
+        cuboidRef.current = null;
+        currentSelectionBoundsRef.current = null;
+        setCuboidCenter(null);
+        setCuboidSize(null);
+      }
+    }
+  }, [selectedRegionsData]);
 
   const cameraStateRef = useRef({ ...CAMERA_INITIAL_STATE });
 
@@ -1700,7 +1766,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         {selectionMode ? '✓ 3D Selection' : '3D Selection'}
       </button>
 
-      {/* Reset View Button - Bottom Right */}
+      {/* Reset View Button - Bottom Right - Consistent with Region_Selection */}
       <button
         onClick={resetCameraView}
         style={{
@@ -1708,25 +1774,28 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           bottom: '20px',
           right: '10px',
           zIndex: 1000,
-          padding: '8px 14px',
-          backgroundColor: '#555',
-          color: 'white',
-          border: 'none',
+          padding: '6px 12px',
+          fontSize: '12px',
+          fontWeight: 500,
+          color: '#fff',
+          background: '#2d7ff9',
+          border: '1px solid #2d7ff9',
           borderRadius: '4px',
           cursor: 'pointer',
-          fontSize: '12px',
-          fontWeight: '500',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-          transition: 'background-color 0.2s',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
+          transition: 'all 0.15s ease',
+          outline: 'none'
         }}
-        onMouseEnter={(e) => e.target.style.backgroundColor = '#666'}
-        onMouseLeave={(e) => e.target.style.backgroundColor = '#555'}
-        title="Reset camera to initial view"
+        onMouseEnter={(e) => {
+          e.target.style.background = '#4a90ff';
+          e.target.style.borderColor = '#4a90ff';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.background = '#2d7ff9';
+          e.target.style.borderColor = '#2d7ff9';
+        }}
+        title="Reset camera and clear all selections"
       >
-        ↺ Reset View
+        Reset
       </button>
 
       {/* Selection Box Help Tooltip - Black & Green Theme */}
