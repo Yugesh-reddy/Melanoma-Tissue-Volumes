@@ -563,7 +563,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
       sceneRef.current.add(wireframe);
       
-      // If not temporary, add to array and keep reference
+      // If not temporary, add to array (keep all boxes visible)
       if (!isTemporary) {
         cuboidWireframesRef.current.push(wireframe);
         cuboidWireframeRef.current = wireframe;
@@ -1037,7 +1037,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           currentCuboidDepth = Math.max(0.01, Math.min(1.0, currentCuboidDepth + depthDelta));
           setCuboidDepth(currentCuboidDepth);
 
-          // Update wireframe with new depth
+          // Update wireframe with new depth (temporary only)
           const endPos = selectionEndRef.current || selectionStartPos;
           const worldBounds = getWorldBoundsFromSelection(
             selectionStartPos.x,
@@ -1049,15 +1049,33 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
           if (worldBounds) {
             try {
-              updateCuboidWireframe(worldBounds);
+              // Only update temporary wireframe during selection, don't add to array
+              updateCuboidWireframe(worldBounds, true);
               setCuboidCenter(worldBounds.center);
               setCuboidSize(worldBounds.size);
             } catch (err) {
               console.error('Main_View: Error updating wireframe on wheel:', err);
             }
           }
+        } else if (selectionModeRef.current && cuboidWireframesRef.current.length > 0) {
+          // If selection mode is active and we have boxes, move the last one in Z direction
+          e.preventDefault();
+          const zDelta = e.deltaY * 0.001;
+          
+          // Move only the last (most recent) box in Z direction
+          const lastBox = cuboidWireframesRef.current[cuboidWireframesRef.current.length - 1];
+          if (lastBox && !lastBox.userData.isTemporary) {
+            lastBox.position.z += zDelta;
+            
+            // Also update cuboidRef if it exists
+            if (cuboidRef.current) {
+              cuboidRef.current.center.z += zDelta;
+              cuboidRef.current.min.z += zDelta;
+              cuboidRef.current.max.z += zDelta;
+            }
+          }
         } else {
-          // Zoom toward mouse position instead of just center
+          // Normal zoom (only when not in selection mode or no box selected)
           const state = cameraStateRef.current;
           const zoomFactor = 1 + e.deltaY * 0.001;
           const oldDistance = state.distance;
