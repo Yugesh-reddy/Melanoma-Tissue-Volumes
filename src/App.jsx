@@ -135,6 +135,11 @@ function App() {
   const handleRegionToggle = useCallback(({ regionPayload, shouldSelect }) => {
     if (!regionPayload) return;
 
+    // Clear all 3D selections when region changes
+    console.log('App: Region changed - clearing all 3D selections');
+    setSelectedRegionsData([]);
+    lastSelectionBoundsRef.current = null;
+
     setSelectedRegions((prevRegions) => {
       let nextRegions = prevRegions;
 
