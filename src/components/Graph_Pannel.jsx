@@ -3,6 +3,13 @@ import * as d3 from 'd3';
 import { loadChannelData } from '../hooks/useChannelData';
 import channelNamesData from '../channel_names.json';
 
+// Selection colors - synced with App.jsx and Main_View
+const SELECTION_COLORS = [
+  '#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa',
+  '#fb923c', '#22d3d8', '#f87171', '#84cc16', '#e879f9'
+];
+const getSelectionColor = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];
+
 const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], selectedRegions = [] }) => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
@@ -221,18 +228,9 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           };
         }
 
-        // Generate color for this box (use different shades/variations)
-        const boxColors = [
-          '#4ade80', // Green
-          '#3b82f6', // Blue
-          '#f59e0b', // Orange
-          '#ef4444', // Red
-          '#8b5cf6', // Purple
-          '#ec4899', // Pink
-          '#06b6d4', // Cyan
-          '#f97316'  // Orange-red
-        ];
-        const boxColor = boxColors[regionIndex % boxColors.length];
+        // Use color from region data (synced with Main_View wireframes and Local_View tabs)
+        // Fall back to SELECTION_COLORS if not available
+        const boxColor = regionData.color || getSelectionColor(regionIndex);
 
         allStats[channelKey].regions.push({
           regionIndex,
@@ -507,9 +505,10 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     // Check if we have multiple regions (at least 2)
     const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
     
-    // Box colors for comparison
-    const box1Color = '#4ade80'; // Green
-    const box2Color = '#3b82f6'; // Blue
+    // Box colors from selection data (synced with Main_View wireframes and Local_View tabs)
+    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
+    const box1Color = regionsArray[0]?.color || getSelectionColor(0);
+    const box2Color = regionsArray[1]?.color || getSelectionColor(1);
 
     // Compute correlation matrices for both boxes
     const correlationMatrix1 = [];
@@ -893,9 +892,10 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     // Check if we have multiple regions (at least 2)
     const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
     
-    // Box colors
-    const box1Color = '#4ade80'; // Green
-    const box2Color = '#3b82f6'; // Blue
+    // Box colors from selection data (synced with Main_View wireframes and Local_View tabs)
+    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
+    const box1Color = regionsArray[0]?.color || getSelectionColor(0);
+    const box2Color = regionsArray[1]?.color || getSelectionColor(1);
 
     // Create kernel density estimation for each channel with adaptive bandwidth
     statsArray.forEach((stat, i) => {

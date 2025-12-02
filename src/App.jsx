@@ -15,6 +15,23 @@ const rgbToHex = (r, g, b) => {
   }).join('');
 };
 
+// Selection box colors - distinct, vibrant colors for easy identification
+const SELECTION_COLORS = [
+  '#4ade80', // Green (default)
+  '#60a5fa', // Blue
+  '#f472b6', // Pink
+  '#facc15', // Yellow
+  '#a78bfa', // Purple
+  '#fb923c', // Orange
+  '#22d3d8', // Cyan
+  '#f87171', // Red
+  '#84cc16', // Lime
+  '#e879f9', // Magenta
+];
+
+// Get color for selection index (cycles through colors)
+const getSelectionColor = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];
+
 function App() {
   const [channels, setChannels] = useState([]);
   const [selectedRegions, setSelectedRegions] = useState([]);
@@ -57,13 +74,7 @@ function App() {
       console.log('App: Updated persistent selection bounds');
     }
 
-    // Add unique ID to selection for tracking
-    const selectionWithId = {
-      ...selectedData,
-      id: Date.now() // Simple ID based on timestamp
-    };
-
-    // Add new selection to array (append, not replace)
+    // Add new selection to array with unique ID and color
     setSelectedRegionsData((prev) => {
       // Check if this selection already exists (by comparing bounds)
       const exists = prev.some((sel) => {
@@ -83,8 +94,17 @@ function App() {
         return prev;
       }
 
-      console.log(`App: ✓ Adding new selection (total: ${prev.length + 1})`);
-      return [...prev, selectionWithId];
+      // Assign color based on the new index
+      const newIndex = prev.length;
+      const selectionWithIdAndColor = {
+        ...selectedData,
+        id: Date.now(),
+        color: getSelectionColor(newIndex),
+        index: newIndex
+      };
+
+      console.log(`App: ✓ Adding new selection (total: ${newIndex + 1}) with color: ${selectionWithIdAndColor.color}`);
+      return [...prev, selectionWithIdAndColor];
     });
   }, []);
 
