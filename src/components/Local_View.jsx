@@ -9,7 +9,8 @@ const JITTER_SCALE = 0.1;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
-const Local_View = ({ selectedRegionData, channels = [] }) => {
+// Component for rendering a single local view
+const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -25,8 +26,8 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
 
   // Debug: Log props changes
   useEffect(() => {
-    console.log('Local_View: Props received - selectedRegionData:', selectedRegionData);
-    console.log('Local_View: Props received - channels:', channels);
+    console.log('LocalViewContent: Props received - selectedRegionData:', selectedRegionData);
+    console.log('LocalViewContent: Props received - channels:', channels);
   }, [selectedRegionData, channels]);
 
   // Camera state for local view (super zoomed)
@@ -1151,6 +1152,165 @@ const Local_View = ({ selectedRegionData, channels = [] }) => {
           left: 0
         }}
       />
+    </div>
+  );
+};
+
+// Main wrapper component with tabs support
+const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [] }) => {
+  // Support both array and single selection for backward compatibility
+  const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
+
+  // Debug: Log regions array
+  useEffect(() => {
+    console.log('Local_View: regionsArray length:', regionsArray.length);
+    console.log('Local_View: regionsArray:', regionsArray);
+    regionsArray.forEach((region, index) => {
+      console.log(`Local_View: Region ${index}:`, {
+        id: region.id,
+        hasBounds: !!region.bounds,
+        bounds: region.bounds
+      });
+    });
+  }, [regionsArray]);
+
+  // Update active tab when new selection is added
+  useEffect(() => {
+    if (regionsArray.length > 0) {
+      // Set active tab to the newest selection (last in array)
+      setActiveTabIndex(regionsArray.length - 1);
+    }
+  }, [regionsArray.length]);
+
+  // If no selections, show placeholder
+  if (regionsArray.length === 0) {
+    return (
+      <div style={{
+        height: '100%',
+        width: '100%',
+        backgroundColor: '#000000',
+        border: '1px solid #444',
+        padding: '1px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        position: 'relative'
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '#666',
+          fontSize: '12px',
+          textAlign: 'center',
+          zIndex: 50,
+          pointerEvents: 'none'
+        }}>
+          <div>No selection made</div>
+          <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
+        </div>
+      </div>
+    );
+  }
+
+  // If only one selection, show it without tabs
+  if (regionsArray.length === 1) {
+    return <LocalViewContent selectedRegionData={regionsArray[0]} channels={channels} />;
+  }
+
+  // Multiple selections - show tabs
+  return (
+    <div style={{
+      height: '100%',
+      width: '100%',
+      backgroundColor: '#000000',
+      border: '1px solid #444',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }}>
+      {/* Tabs Header */}
+      <div style={{
+        display: 'flex',
+        backgroundColor: '#1a1a1a',
+        borderBottom: '1px solid #444',
+        padding: '0',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        flexShrink: 0,
+        zIndex: 10
+      }}>
+        {regionsArray.map((region, index) => (
+          <button
+            key={region.id || index}
+            onClick={() => setActiveTabIndex(index)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: activeTabIndex === index ? '#333' : 'transparent',
+              color: activeTabIndex === index ? '#fff' : '#aaa',
+              border: 'none',
+              borderBottom: activeTabIndex === index ? '2px solid #4ade80' : '2px solid transparent',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: activeTabIndex === index ? 'bold' : 'normal',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+              minWidth: '60px'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTabIndex !== index) {
+                e.target.style.backgroundColor = '#222';
+                e.target.style.color = '#fff';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTabIndex !== index) {
+                e.target.style.backgroundColor = 'transparent';
+                e.target.style.color = '#aaa';
+              }
+            }}
+          >
+            Tab {index + 1}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div style={{
+        flex: 1,
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {regionsArray.map((region, index) => {
+          const isActive = activeTabIndex === index;
+          return (
+            <div
+              key={region.id || `region-${index}`}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                zIndex: isActive ? 1 : 0,
+                opacity: isActive ? 1 : 0,
+                pointerEvents: isActive ? 'auto' : 'none',
+                transition: 'opacity 0.2s'
+              }}
+            >
+              <LocalViewContent 
+                key={`content-${region.id || index}`}
+                selectedRegionData={region} 
+                channels={channels} 
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

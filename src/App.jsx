@@ -21,7 +21,7 @@ function App() {
   const [presetVersion, setPresetVersion] = useState(0);
   const lastAggregatedSignatureRef = useRef('');
 
-  const [selectedRegionData, setSelectedRegionData] = useState(null);
+  const [selectedRegionsData, setSelectedRegionsData] = useState([]);
   const lastSelectionBoundsRef = useRef(null); // Persist selection bounds across region switches
 
   const handleChannelsChange = useCallback((updatedChannels) => {
@@ -35,7 +35,7 @@ function App() {
     console.log('App: Bounds:', selectedData?.bounds);
     console.log('App: Channels:', selectedData?.channels);
     console.log('App: Scaling:', selectedData?.scaling);
-    console.log('App: Setting selectedRegionData state...');
+    console.log('App: Adding to selectedRegionsData array...');
 
     if (!selectedData || !selectedData.bounds) {
       console.error('App: Invalid selection data received:', selectedData);
@@ -48,8 +48,35 @@ function App() {
       console.log('App: Updated persistent selection bounds');
     }
 
-    setSelectedRegionData(selectedData);
-    console.log('App: ✓ selectedRegionData state updated');
+    // Add unique ID to selection for tracking
+    const selectionWithId = {
+      ...selectedData,
+      id: Date.now() // Simple ID based on timestamp
+    };
+
+    // Add new selection to array (append, not replace)
+    setSelectedRegionsData((prev) => {
+      // Check if this selection already exists (by comparing bounds)
+      const exists = prev.some((sel) => {
+        if (!sel.bounds || !selectedData.bounds) return false;
+        return (
+          sel.bounds.min.x === selectedData.bounds.min.x &&
+          sel.bounds.min.y === selectedData.bounds.min.y &&
+          sel.bounds.min.z === selectedData.bounds.min.z &&
+          sel.bounds.max.x === selectedData.bounds.max.x &&
+          sel.bounds.max.y === selectedData.bounds.max.y &&
+          sel.bounds.max.z === selectedData.bounds.max.z
+        );
+      });
+
+      if (exists) {
+        console.log('App: Selection already exists, not adding duplicate');
+        return prev;
+      }
+
+      console.log(`App: ✓ Adding new selection (total: ${prev.length + 1})`);
+      return [...prev, selectionWithId];
+    });
   }, []);
 
   const buildAggregatedChannels = useCallback((regions) => {
@@ -210,7 +237,7 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Local_View selectedRegionData={selectedRegionData} channels={channels} />
+              <Local_View selectedRegionsData={selectedRegionsData} channels={channels} />
             </div>
             {/* Graph Panel - 33.3% width */}
             <div style={{
@@ -220,7 +247,7 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Graph_Pannel selectedRegionData={selectedRegionData} channels={channels} selectedRegions={selectedRegions} />
+              <Graph_Pannel selectedRegionsData={selectedRegionsData} channels={channels} selectedRegions={selectedRegions} />
             </div>
             {/* Direction View - 33.3% width */}
             <div style={{
