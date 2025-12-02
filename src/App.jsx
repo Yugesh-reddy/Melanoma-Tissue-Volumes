@@ -79,6 +79,15 @@ function App() {
     });
   }, []);
 
+  const handleRegionRemove = useCallback((regionId) => {
+    console.log('App: Removing region with id:', regionId);
+    setSelectedRegionsData((prev) => {
+      const filtered = prev.filter((region) => region.id !== regionId);
+      console.log(`App: ✓ Removed region. Remaining: ${filtered.length}`);
+      return filtered;
+    });
+  }, []);
+
   const buildAggregatedChannels = useCallback((regions) => {
     return regions.flatMap((region) =>
       region.channels.map((channel, index) => ({
@@ -217,6 +226,7 @@ function App() {
               activeRegions={selectedRegions}
               onSelectionChange={handleSelectionChange}
               initialSelectionBounds={lastSelectionBoundsRef.current} // Pass persistent bounds
+              selectedRegionsData={selectedRegionsData}
             />
           </div>
 
@@ -237,7 +247,11 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Local_View selectedRegionsData={selectedRegionsData} channels={channels} />
+              <Local_View 
+                selectedRegionsData={selectedRegionsData} 
+                channels={channels}
+                onRegionRemove={handleRegionRemove}
+              />
             </div>
             {/* Graph Panel - 33.3% width */}
             <div style={{
