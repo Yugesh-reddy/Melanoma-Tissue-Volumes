@@ -167,7 +167,7 @@ const Title = ({ softwareName = "Software Name (title)" }) => {
                 onMouseEnter={(e) => e.target.style.color = '#1976D2'}
                 onMouseLeave={(e) => e.target.style.color = '#2196F3'}
               >
-                Yugesh Sappidy
+                Yugesh Sappidi
               </a>
               {' '}for the Visual Data Science graduate course at the University of Illinois Chicago (Fall 2025), was developed in collaboration with{' '}
               <a

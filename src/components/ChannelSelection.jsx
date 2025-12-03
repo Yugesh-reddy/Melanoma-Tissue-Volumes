@@ -517,135 +517,23 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
         </h3>
       </div>
 
-      {/* Help Panel - Black & Green Theme */}
+      {/* Help Panel - Hossein's version */}
       {showHelp && (
         <div style={{
-          background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 40, 20, 0.95) 100%)',
-          border: '1px solid rgba(74, 222, 128, 0.5)',
-          borderRadius: '12px',
-          padding: '16px 18px',
-          marginBottom: '16px',
-          boxShadow: '0 4px 20px rgba(74, 222, 128, 0.15), inset 0 1px 0 rgba(74, 222, 128, 0.1)',
-          backdropFilter: 'blur(10px)'
+          backgroundColor: '#1a1a1a',
+          border: '1px solid #444',
+          borderRadius: '4px',
+          padding: '12px',
+          marginBottom: '12px'
         }}>
-          {/* Header */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '10px',
-            marginBottom: '16px',
-            paddingBottom: '12px',
-            borderBottom: '1px solid rgba(74, 222, 128, 0.3)'
-          }}>
-            <span style={{ fontSize: '24px' }}>📖</span>
-            <span style={{ 
-              fontSize: '18px', 
-              fontWeight: '700', 
-              color: '#4ade80',
-              letterSpacing: '0.5px'
-            }}>Quick Guide</span>
-          </div>
-
-          {/* Guide Items */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Checkbox */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-              <span style={{ 
-                fontSize: '28px', 
-                lineHeight: '1',
-                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
-              }}>☑️</span>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
-                  Checkbox
-                </div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
-                  Toggle channel visibility on/off
-                </div>
-              </div>
-            </div>
-
-            {/* Color Picker */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-              <span style={{ 
-                fontSize: '28px', 
-                lineHeight: '1',
-                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
-              }}>🎨</span>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
-                  Color Picker <span style={{ fontSize: '11px', color: '#4ade80' }}>(✏️ icon)</span>
-                </div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
-                  Click the square with pencil to change color
-                </div>
-              </div>
-            </div>
-
-            {/* Dropdown */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-              <span style={{ 
-                fontSize: '28px', 
-                lineHeight: '1',
-                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
-              }}>📊</span>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
-                  Dropdown
-                </div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
-                  Select different biomarker channels
-                </div>
-              </div>
-            </div>
-
-            {/* Slider */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-              <span style={{ 
-                fontSize: '28px', 
-                lineHeight: '1',
-                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
-              }}>🎚️</span>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
-                  Slider
-                </div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
-                  Adjust min/max intensity thresholds
-                </div>
-              </div>
-            </div>
-
-            {/* Apply Filter */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-              <span style={{ 
-                fontSize: '28px', 
-                lineHeight: '1',
-                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
-              }}>✨</span>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
-                  Apply Filter
-                </div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.4' }}>
-                  Update visualization with new thresholds
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Close hint */}
-          <div style={{ 
-            marginTop: '14px', 
-            paddingTop: '12px',
-            borderTop: '1px solid rgba(74, 222, 128, 0.2)',
-            textAlign: 'center',
-            fontSize: '12px',
-            color: 'rgba(74, 222, 128, 0.6)',
-            fontStyle: 'italic'
-          }}>
-            Click <strong style={{ color: '#4ade80' }}>?</strong> to close this guide
-          </div>
+          <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#fff', fontSize: '16px' }}>Quick Guide:</div>
+          <ul style={{ margin: 0, paddingLeft: '20px', color: '#fff', fontSize: '14px' }}>
+            <li style={{ marginBottom: '4px' }}><strong>Checkbox:</strong> Toggle channel visibility on/off</li>
+            <li style={{ marginBottom: '4px' }}><strong> Color Square:</strong> Click to change channel display color</li>
+            <li style={{ marginBottom: '4px' }}><strong> Dropdown:</strong> Select different biomarker channels</li>
+            <li style={{ marginBottom: '4px' }}><strong> Slider:</strong> Adjust min/max intensity thresholds</li>
+            <li><strong>Apply Filter:</strong> Update visualization with new thresholds</li>
+          </ul>
         </div>
       )}
 

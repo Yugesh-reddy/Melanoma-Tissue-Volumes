@@ -793,6 +793,12 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           boxEdgePositions[i + 3], boxEdgePositions[i + 4], boxEdgePositions[i + 5]
         ]);
         
+        // Get renderer size for LineMaterial resolution
+        const renderer = rendererRef.current;
+        const resolution = renderer 
+          ? new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight)
+          : new THREE.Vector2(window.innerWidth, window.innerHeight);
+        
         const lineMaterial = new LineMaterial({
           color: color.getHex(),
           linewidth: isTemporary ? 2 : 3, // Pixel width - thinner but visible
@@ -800,7 +806,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           opacity: isTemporary ? 0.7 : 1.0,
           depthTest: false,
           depthWrite: false,
-          resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
+          resolution: resolution
         });
         
         const line = new Line2(lineGeometry, lineMaterial);
@@ -823,8 +829,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         // Store worldBounds in userData for matching with selectedRegionsData
         wireframe.userData.worldBounds = worldBounds;
         // Store color for reference
-        wireframe.userData.boxColor = boxColorHex;
-        wireframe.userData.boxIndex = boxIndex;
+        wireframe.userData.boxColor = wireframeColor;
+        wireframe.userData.selectionId = null; // Will be set when selection is complete
       }
 
       sceneRef.current.add(wireframe);
@@ -861,7 +867,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         max: worldBounds.max ? worldBounds.max.clone() : new THREE.Vector3(safeSizeX / 2, safeSizeY / 2, safeSizeZ / 2)
       };
 
-      boxGeometry.dispose();
+      // Force render to show the new wireframe
+      renderScene();
     } catch (err) {
       console.error('Main_View: Error in updateCuboidWireframe:', err);
       console.error('Main_View: worldBounds:', worldBounds);

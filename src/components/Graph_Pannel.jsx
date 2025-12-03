@@ -1065,10 +1065,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     xAxis.selectAll('text')
       .style('fill', '#fff')
       .style('font-size', numChannels > 15 ? '9px' : '11px')
-      .attr('transform', 'rotate(-45)')
-      .style('text-anchor', 'end')
-      .attr('dx', '-0.8em')
-      .attr('dy', '0.15em');
+      .style('text-anchor', 'middle')
+      .attr('dy', '1em');
 
     // Y axis with better styling
     g.append('g')
