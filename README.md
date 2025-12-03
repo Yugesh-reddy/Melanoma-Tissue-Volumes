@@ -57,33 +57,73 @@ npm run preview
 npm start
 ```
 
-## Features
+## Components
 
-### Interactive 3D Cube
-- **Rotating cube** - Continuously spins on X and Y axes
-- **Color changing** - Click button to cycle through 8 colors
-- **React state management** - Color changes managed with React hooks
-- **Responsive design** - Adapts to window size
+### Main View
+Interactive 3D visualization of the entire tissue volume with:
+- Multi-channel biomarker visualization
+- 3D selection boxes for region analysis
+- Camera controls (rotate, pan, zoom)
+- Level-of-detail (LOD) optimization for performance
 
-### Available Colors
-- Green, Red, Blue, Yellow, Magenta, Cyan, Orange, Purple
+### Channel Selection
+Configure and manage multiple biomarker channels:
+- Adjust color, opacity, and threshold values
+- Enable/disable channels for focused analysis
+- Real-time visualization updates
 
-## How It Works
+### Region Selection
+Manage and toggle different tissue regions for comparative analysis.
 
-### React Components
-- **App.jsx** - Main component containing Three.js scene
-- **main.jsx** - React entry point and root rendering
+### Local View
+Detailed 3D examination of selected regions:
+- Multiple region tabs
+- Independent camera controls per region
+- High-resolution local analysis
 
+### Graph Panel
+Statistical analysis and visualization:
+- Bar charts for cell count comparison
+- Heatmaps for co-expression analysis
+- Violin plots for distribution analysis
+- Multi-region comparison
 
-### Why We're Testing This
-This React + Three.js test helps us verify that our 3D rendering 
+### Direction View
+Spatial orientation and directional analysis of biomarker distributions.
+
 ## Project Structure
 
 ```
 src/
-├── App.jsx          # Main React component with Three.js
-├── main.jsx         # React entry point
-index.html           # HTML template
-vite.config.js       # Vite configuration
-package.json         # Dependencies and scripts
+├── components/
+│   ├── Main_View.jsx          # Main 3D visualization component
+│   ├── Local_View.jsx         # Local region view component
+│   ├── Graph_Pannel.jsx       # Statistical analysis panel
+│   ├── ChannelSelection.jsx   # Channel configuration
+│   ├── Region_Selection.jsx   # Region management
+│   ├── Direction_view.jsx     # Directional analysis
+│   └── Title.jsx              # Header with About/Help
+├── hooks/
+│   └── useChannelData.js      # Data loading utilities
+├── App.jsx                     # Main application component
+└── main.jsx                    # React entry point
 ```
+
+## Deployment
+
+The project is deployed on GitHub Pages:
+- **Live URL**: [https://hosseinfatho.github.io/BioProject/](https://hosseinfatho.github.io/BioProject/)
+
+To deploy:
+```bash
+npm run build
+npm run deploy
+```
+
+## Acknowledgments
+
+Developed in collaboration with:
+- **Dr. Lei Duan** - Rush Medical University
+- **Dr. Carl Maki** - Rush Medical University
+
+Course: Visual Data Science (Fall 2025) - University of Illinois Chicago
