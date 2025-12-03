@@ -3,6 +3,15 @@ import * as d3 from 'd3';
 import { loadChannelData } from '../hooks/useChannelData';
 import channelNamesData from '../channel_names.json';
 
+// Color map for selection boxes (matching 3D box colors)
+const BOX_COLOR_MAP = [
+  '#ca0020', // First box - Red
+  '#f4a582', // Second box - Light orange
+  '#f7f7f7', // Third box - Light gray
+  '#92c5de', // Fourth box - Light blue
+  '#0571b0'  // Fifth box - Dark blue
+];
+
 const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], selectedRegions = [] }) => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
@@ -221,16 +230,13 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           };
         }
 
-        // Generate color for this box (use different shades/variations)
+        // Generate color for this box (use color map matching 3D box colors)
         const boxColors = [
-          '#4ade80', // Green
-          '#3b82f6', // Blue
-          '#f59e0b', // Orange
-          '#ef4444', // Red
-          '#8b5cf6', // Purple
-          '#ec4899', // Pink
-          '#06b6d4', // Cyan
-          '#f97316'  // Orange-red
+          '#ca0020', // First box - Red
+          '#f4a582', // Second box - Light orange
+          '#f7f7f7', // Third box - Light gray
+          '#92c5de', // Fourth box - Light blue
+          '#0571b0'  // Fifth box - Dark blue
         ];
         const boxColor = boxColors[regionIndex % boxColors.length];
 
@@ -496,9 +502,9 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     // Check if we have multiple regions (at least 2)
     const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
     
-    // Box colors for comparison
-    const box1Color = '#4ade80'; // Green
-    const box2Color = '#3b82f6'; // Blue
+    // Box colors for comparison (use color map)
+    const box1Color = BOX_COLOR_MAP[0]; // First box
+    const box2Color = BOX_COLOR_MAP[1]; // Second box
 
     // Compute correlation matrices for both boxes
     const correlationMatrix1 = [];
@@ -882,9 +888,9 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     // Check if we have multiple regions (at least 2)
     const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
     
-    // Box colors
-    const box1Color = '#4ade80'; // Green
-    const box2Color = '#3b82f6'; // Blue
+    // Box colors (use color map)
+    const box1Color = BOX_COLOR_MAP[0]; // First box
+    const box2Color = BOX_COLOR_MAP[1]; // Second box
 
     // Create kernel density estimation for each channel with adaptive bandwidth
     statsArray.forEach((stat, i) => {

@@ -10,7 +10,7 @@ const JITTER_SCALE = 0.1;
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 // Component for rendering a single local view
-const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
+const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regionId }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -894,28 +894,23 @@ const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
   }, [showInfoModal]);
 
   // Reset camera view to initial position with visual feedback
-  const resetView = () => {
-    if (initialCameraStateRef.current) {
-      // Add visual feedback - briefly highlight button
-      const button = document.getElementById('reset-view-btn');
-      if (button) {
-        button.style.transform = 'scale(0.95)';
-        button.style.backgroundColor = '#4CAF50';
-        setTimeout(() => {
-          button.style.transform = 'scale(1)';
-          button.style.backgroundColor = '#555';
-        }, 150);
-      }
-
-      // Reset camera state
-      cameraStateRef.current.rotation = { ...initialCameraStateRef.current.rotation };
-      cameraStateRef.current.distance = initialCameraStateRef.current.distance;
-      cameraStateRef.current.panOffset = { ...initialCameraStateRef.current.panOffset };
-      updateCameraPosition();
-      updateLighting();
-
-      console.log('Local_View: Camera reset to initial position');
+  // If onCloseTab is provided, close the current tab instead of resetting camera
+  const resetView = (e) => {
+    // If we have onCloseTab callback, close the current tab
+    if (onCloseTab && regionId !== undefined && selectedRegionData) {
+      // Create a mock event if not provided
+      const event = e || { stopPropagation: () => {} };
+      event.stopPropagation();
+      
+      // Close the current tab by calling handleCloseTab
+      onCloseTab(event, selectedRegionData);
+      console.log('Local_View: Closing tab via Reset View');
+      return;
     }
+    
+    // Otherwise, if no tabs exist, the view will show placeholder automatically
+    // No need to do anything - just log
+    console.log('Local_View: No tabs to close, view will show placeholder');
   };
 
   // Calculate section depth and volume from selected region data
@@ -1194,12 +1189,20 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
     });
   }, [regionsArray]);
 
-  // Update active tab when new selection is added
+  // Update active tab when new selection is added or when tabs are closed
   useEffect(() => {
     if (visibleRegions.length > 0) {
-      // Set active tab to the newest selection (last in visible array)
-      const newIndex = visibleRegions.length - 1;
-      setActiveTabIndex(newIndex);
+      // Ensure activeTabIndex is valid
+      if (activeTabIndex >= visibleRegions.length) {
+        // If active index is out of bounds, set to last tab
+        setActiveTabIndex(visibleRegions.length - 1);
+      } else if (activeTabIndex < 0) {
+        // If active index is negative, set to first tab
+        setActiveTabIndex(0);
+      }
+    } else {
+      // If no visible regions, reset active tab index
+      setActiveTabIndex(0);
     }
   }, [visibleRegions.length]);
 
@@ -1216,17 +1219,24 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
       return rId === regionId;
     });
     
-    // Adjust active tab index if we're closing the active tab
+    if (currentVisibleIndex === -1) return; // Tab not found
+    
+    const remainingCount = visibleRegions.length - 1;
+    
+    // Adjust active tab index BEFORE closing
     if (activeTabIndex === currentVisibleIndex) {
-      const remainingCount = visibleRegions.length - 1;
+      // We're closing the active tab
       if (remainingCount > 0) {
         // Switch to the previous tab, or stay at the same index if it becomes the last
         const newIndex = Math.min(currentVisibleIndex, remainingCount - 1);
         setActiveTabIndex(newIndex);
+      } else {
+        // If this is the last tab, reset to 0
+        setActiveTabIndex(0);
       }
     } else if (activeTabIndex > currentVisibleIndex) {
       // If we're closing a tab before the active one, decrease the active index
-      setActiveTabIndex(prev => prev - 1);
+      setActiveTabIndex(prev => Math.max(0, prev - 1));
     }
     
     // Add to closed tabs
@@ -1274,7 +1284,16 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
 
   // If only one selection, show it without tabs
   if (visibleRegions.length === 1) {
-    return <LocalViewContent selectedRegionData={visibleRegions[0]} channels={channels} />;
+    const singleRegion = visibleRegions[0];
+    const singleRegionId = regionIdMap.get(singleRegion);
+    return (
+      <LocalViewContent 
+        selectedRegionData={singleRegion} 
+        channels={channels}
+        onCloseTab={handleCloseTab}
+        regionId={singleRegionId}
+      />
+    );
   }
 
   // Multiple selections - show tabs
@@ -1405,7 +1424,9 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
               <LocalViewContent 
                 key={`content-${region.id || index}`}
                 selectedRegionData={region} 
-                channels={channels} 
+                channels={channels}
+                onCloseTab={handleCloseTab}
+                regionId={regionIdMap.get(region)}
               />
             </div>
           );
