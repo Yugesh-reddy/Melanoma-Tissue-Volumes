@@ -691,16 +691,16 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
   // Selection box colors - synced with App.jsx
   const SELECTION_COLORS = [
-    '#4ade80', // Green (default)
-    '#60a5fa', // Blue
-    '#f472b6', // Pink
+    '#60a5fa', // Blue (first selection)
     '#facc15', // Yellow
-    '#a78bfa', // Purple
+    '#e879f9', // Magenta
+    '#4ade80', // Green
     '#fb923c', // Orange
+    '#f472b6', // Pink
     '#22d3d8', // Cyan
     '#f87171', // Red
+    '#a78bfa', // Purple
     '#84cc16', // Lime
-    '#e879f9', // Magenta
   ];
 
   const getSelectionColor = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];

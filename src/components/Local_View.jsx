@@ -967,17 +967,17 @@ const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
           }}
           style={{
             position: 'absolute',
-            top: '8px',
-            right: '8px',
+            top: '6px',
+            right: '6px',
             zIndex: 100,
             background: 'rgba(0,0,0,0.6)',
             border: '1px solid rgba(255, 255, 255, 0.3)',
             borderRadius: '50%',
-            width: '24px',
-            height: '24px',
+            width: '22px',
+            height: '22px',
             cursor: 'pointer',
             color: '#fff',
-            fontSize: '14px',
+            fontSize: '12px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1005,17 +1005,17 @@ const LocalViewContent = ({ selectedRegionData, channels = [] }) => {
           id="info-modal"
           style={{
             position: 'absolute',
-            top: '40px',
-            left: '10px',
+            top: '34px',
+            left: '8px',
             backgroundColor: 'rgba(20, 20, 20, 0.95)',
             border: '1px solid rgba(255, 255, 255, 0.2)',
             borderRadius: '6px',
-            padding: '12px',
+            padding: '10px',
             zIndex: 1000,
-            fontSize: '12px',
+            fontSize: '11px',
             fontFamily: 'monospace',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-            minWidth: '200px'
+            minWidth: '180px'
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1224,8 +1224,8 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
 
   // Selection colors fallback (synced with App.jsx)
   const SELECTION_COLORS = [
-    '#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa',
-    '#fb923c', '#22d3d8', '#f87171', '#84cc16', '#e879f9'
+    '#60a5fa', '#facc15', '#e879f9', '#4ade80', '#fb923c',
+    '#f472b6', '#22d3d8', '#f87171', '#a78bfa', '#84cc16'
   ];
   const getSelectionColorFallback = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];
 
@@ -1235,7 +1235,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      padding: '8px 12px',
+      padding: '6px 10px',
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
       flexShrink: 0,

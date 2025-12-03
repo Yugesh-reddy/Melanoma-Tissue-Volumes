@@ -5,8 +5,8 @@ import channelNamesData from '../channel_names.json';
 
 // Selection colors - synced with App.jsx and Main_View
 const SELECTION_COLORS = [
-  '#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa',
-  '#fb923c', '#22d3d8', '#f87171', '#84cc16', '#e879f9'
+  '#60a5fa', '#facc15', '#e879f9', '#4ade80', '#fb923c',
+  '#f472b6', '#22d3d8', '#f87171', '#a78bfa', '#84cc16'
 ];
 const getSelectionColor = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];
 
@@ -432,10 +432,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     xAxis.selectAll('text')
       .style('fill', '#fff')
       .style('font-size', statsArray.length > 15 ? '9px' : '11px')
-      .attr('transform', 'rotate(-45)')
-      .style('text-anchor', 'end')
-      .attr('dx', '-0.8em')
-      .attr('dy', '0.15em');
+      .style('text-anchor', 'middle')
+      .attr('dy', '1em');
 
     // Y axis
     g.append('g')
