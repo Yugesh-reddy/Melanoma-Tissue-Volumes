@@ -270,6 +270,31 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     }
   }, [selectedRegionData, selectedRegionsData, channels, selectedRegions, graphType, extractVoxelsInBounds, calculateStats, getBiomarkerName]);
 
+  // Reset Graph Panel when selectedRegionsData becomes empty
+  useEffect(() => {
+    const hasRegions = (selectedRegionsData && selectedRegionsData.length > 0) || selectedRegionData;
+    if (!hasRegions) {
+      // Reset all state when no regions are selected
+      setChannelStats(null);
+      setLoading(false);
+      setError(null);
+      
+      // Clear chart if it exists
+      if (chartRef.current?.tooltip) {
+        chartRef.current.tooltip.remove();
+        chartRef.current = null;
+      }
+      
+      // Clear SVG
+      if (svgRef.current) {
+        const svg = d3.select(svgRef.current);
+        svg.selectAll('*').remove();
+      }
+      
+      console.log('Graph_Panel: Reset - no regions selected');
+    }
+  }, [selectedRegionsData, selectedRegionData]);
+
   // Analyze region when selection or channels change
   useEffect(() => {
     analyzeSelectedRegion();

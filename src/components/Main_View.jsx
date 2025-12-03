@@ -381,9 +381,15 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
   // Reset camera to initial state and clear all boxes
   const resetCameraView = useCallback(() => {
+    // Reset camera to initial state
     cameraStateRef.current = { ...CAMERA_INITIAL_STATE };
+    
     if (cameraRef.current) {
+      // Update camera position to show default view
       updateCameraPosition();
+      
+      // Force LOD update to show data at appropriate quality for default view
+      lodStateRef.current.lastUpdate = 0; // Reset LOD cooldown to force update
       updateChannelLOD();
     }
     
@@ -433,8 +439,17 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       onSelectionChange(null);
     }
     
+    // Force multiple renders to ensure default view is displayed
     renderScene();
-    console.log('Main_View: Camera reset to initial state and all boxes cleared');
+    
+    // Additional render after a short delay to ensure view is updated
+    requestAnimationFrame(() => {
+      updateCameraPosition();
+      updateChannelLOD();
+      renderScene();
+    });
+    
+    console.log('Main_View: Camera reset to default view and all boxes cleared');
   }, [updateCameraPosition, updateChannelLOD, onSelectionChange, renderScene]);
 
   const handleMovement = useCallback(() => {
@@ -1097,6 +1112,11 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
               handleSelectionComplete(worldBounds).catch(err => {
                 console.error('Main_View: Error in handleSelectionComplete:', err);
               });
+              
+              // Auto-disable selection mode after completing a box selection
+              // This allows user to interact with data (zoom, rotate, etc.) with previous boxes visible
+              console.log('Main_View: Auto-disabling selection mode after box completion');
+              setSelectionMode(false);
             } catch (err) {
               console.error('Main_View: Error updating cuboid wireframe:', err);
             }
