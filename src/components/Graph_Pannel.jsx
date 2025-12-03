@@ -756,9 +756,20 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     if (statsArray.length === 0) return;
 
     const numChannels = statsArray.length;
+    // Get regions array and check if we have multiple regions
+    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
+    const hasMultipleRegions = regionsArray.length >= 2;
+    
+    // Validate selected indices
+    const validBox1Index = Math.min(box1Index, regionsArray.length - 1);
+    const validBox2Index = hasMultipleRegions ? Math.min(box2Index, regionsArray.length - 1) : validBox1Index;
+    
+    // Determine if we should show comparison view
+    const showComparison = hasMultipleRegions && validBox1Index !== validBox2Index;
+    
     const margin = {
       top: 30,
-      right: 40, // Reduced right margin since we removed the text stats
+      right: showComparison ? 90 : 40, // Account for controls when comparing
       bottom: 120, // Increased for X-axis labels
       left: 60
     };
@@ -802,19 +813,15 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       .style('border', '1px solid rgba(255, 255, 255, 0.2)')
       .style('box-shadow', '0 4px 12px rgba(0, 0, 0, 0.5)');
 
-    // Check if we have multiple regions (at least 2)
-    const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
-    
     // Box colors from selection data (synced with Main_View wireframes and Local_View tabs)
-    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
-    const box1Color = regionsArray[0]?.color || getSelectionColor(0);
-    const box2Color = regionsArray[1]?.color || getSelectionColor(1);
+    const box1Color = regionsArray[validBox1Index]?.color || getSelectionColor(validBox1Index);
+    const box2Color = regionsArray[validBox2Index]?.color || getSelectionColor(validBox2Index);
 
     // Create kernel density estimation for each channel with adaptive bandwidth
     statsArray.forEach((stat, i) => {
-      // Get data from first two boxes only
-      const region1 = stat.regions && stat.regions.length > 0 ? stat.regions[0] : null;
-      const region2 = stat.regions && stat.regions.length > 1 ? stat.regions[1] : null;
+      // Get data from selected boxes
+      const region1 = stat.regions && stat.regions[validBox1Index] ? stat.regions[validBox1Index] : null;
+      const region2 = showComparison && stat.regions && stat.regions[validBox2Index] ? stat.regions[validBox2Index] : null;
       
       if (!region1 || (!region1.distribution || region1.distribution.length === 0)) return;
 
@@ -850,7 +857,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           tooltip.style('opacity', 1)
             .html(`
               <div style="font-weight: bold; margin-bottom: 6px; color: ${box1Color}; font-size: 13px;">
-                ${stat.name} - Box 1
+                ${stat.name} - Box ${validBox1Index + 1}
               </div>
               <div style="line-height: 1.6;">
                 <div><strong>Mean:</strong> ${region1.meanIntensity.toFixed(2)}</div>
@@ -866,8 +873,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           tooltip.style('opacity', 0);
         });
 
-      // Process Box 2 (right side) if available
-      if (hasMultipleRegions && region2 && region2.distribution && region2.distribution.length > 0) {
+      // Process Box 2 (right side) if available and comparing
+      if (showComparison && region2 && region2.distribution && region2.distribution.length > 0) {
         const localMax2 = region2.max || 1;
         const normalizedData2 = region2.distribution.map(v => v / localMax2);
         const kde2 = kernelDensityEstimator(kernelEpanechnikov(0.05), yScale.ticks(40));
@@ -896,7 +903,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
             tooltip.style('opacity', 1)
               .html(`
                 <div style="font-weight: bold; margin-bottom: 6px; color: ${box2Color}; font-size: 13px;">
-                  ${stat.name} - Box 2
+                  ${stat.name} - Box ${validBox2Index + 1}
                 </div>
                 <div style="line-height: 1.6;">
                   <div><strong>Mean:</strong> ${region2.meanIntensity.toFixed(2)}</div>
@@ -962,8 +969,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
         .attr('opacity', 0.5)
         .attr('stroke-dasharray', '3,3');
 
-      // Draw quartiles for Box 2 (right side) if available
-      if (hasMultipleRegions && region2) {
+      // Draw quartiles for Box 2 (right side) if available and comparing
+      if (showComparison && region2) {
         const localMax2 = region2.max || 1;
         const q1Y2 = yScale(region2.q1 / localMax2);
         const q2Y2 = yScale(region2.q2 / localMax2);
@@ -1069,10 +1076,10 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       .style('font-weight', '500')
       .text('Biomarker');
 
-    // Title (adjusted position)
-    const titleText = hasMultipleRegions 
-      ? 'Normalized Intensity Distributions (Box 1 vs Box 2)'
-      : 'Normalized Intensity Distributions';
+    // Title (adjusted position) - shows which boxes are being compared
+    const titleText = showComparison 
+      ? `Violin Plot: Box ${validBox1Index + 1} vs Box ${validBox2Index + 1}`
+      : `Violin Plot: Box ${validBox1Index + 1}`;
     g.append('text')
       .attr('x', chartWidth / 2)
       .attr('y', -10)
@@ -1082,46 +1089,10 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       .style('font-weight', 'bold')
       .text(titleText);
 
-    // Legend for two boxes if multiple regions
-    if (hasMultipleRegions) {
-      const legendY = -5;
-      const legendX = chartWidth - 150;
-      
-      // Box 1 legend
-      g.append('rect')
-        .attr('x', legendX)
-        .attr('y', legendY)
-        .attr('width', 12)
-        .attr('height', 12)
-        .attr('fill', box1Color)
-        .attr('opacity', 0.7);
-      
-      g.append('text')
-        .attr('x', legendX + 18)
-        .attr('y', legendY + 9)
-        .style('fill', box1Color)
-        .style('font-size', '11px')
-        .text('Box 1 (Left)');
-      
-      // Box 2 legend
-      g.append('rect')
-        .attr('x', legendX + 90)
-        .attr('y', legendY)
-        .attr('width', 12)
-        .attr('height', 12)
-        .attr('fill', box2Color)
-        .attr('opacity', 0.7);
-      
-      g.append('text')
-        .attr('x', legendX + 108)
-        .attr('y', legendY + 9)
-        .style('fill', box2Color)
-        .style('font-size', '11px')
-        .text('Box 2 (Right)');
-    }
+    // Legend removed - not needed for violin plots
 
     chartRef.current = { tooltip };
-  }, [channelStats]);
+  }, [channelStats, box1Index, box2Index, selectedRegionsData, selectedRegionData]);
 
   // Kernel density estimation helpers
   const kernelEpanechnikov = (k) => {
@@ -1499,8 +1470,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           </div>
         )}
 
-        {/* Selection Controls - Only show for heatmap with multiple selections */}
-        {graphType === 'heatmap' && selectedRegionsData && selectedRegionsData.length >= 2 && (
+        {/* Selection Controls - Show for heatmap and violin with multiple selections */}
+        {(graphType === 'heatmap' || graphType === 'violin') && selectedRegionsData && selectedRegionsData.length >= 2 && (
           <div style={{
             width: '70px',
             padding: '8px 4px',
@@ -1714,57 +1685,59 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
               )}
             </div>
 
-            {/* Correlation Scale - Right under Box 2 */}
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              marginTop: '8px'
-            }}>
+            {/* Correlation Scale - Only show for heatmap */}
+            {graphType === 'heatmap' && (
               <div style={{
-                fontSize: '9px',
-                color: 'rgba(255, 255, 255, 0.7)',
-                marginBottom: '4px',
-                fontWeight: '500'
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                marginTop: '8px'
               }}>
-                Corr
+                <div style={{
+                  fontSize: '9px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  marginBottom: '4px',
+                  fontWeight: '500'
+                }}>
+                  Corr
+                </div>
+                <div style={{
+                  width: '12px',
+                  height: '180px',
+                  background: 'linear-gradient(to bottom, #fde725 0%, #b8de29 10%, #6ece58 20%, #35b779 35%, #21918c 50%, #2c728e 65%, #31688e 80%, #3b528b 90%, #440154 100%)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '2px',
+                  position: 'relative'
+                }}>
+                  {/* Scale labels */}
+                  <div style={{
+                    position: 'absolute',
+                    right: '14px',
+                    top: '0',
+                    fontSize: '8px',
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    lineHeight: '1'
+                  }}>1.0</div>
+                  <div style={{
+                    position: 'absolute',
+                    right: '14px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: '8px',
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    lineHeight: '1'
+                  }}>0.5</div>
+                  <div style={{
+                    position: 'absolute',
+                    right: '14px',
+                    bottom: '0',
+                    fontSize: '8px',
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    lineHeight: '1'
+                  }}>0.0</div>
+                </div>
               </div>
-              <div style={{
-                width: '12px',
-                height: '180px',
-                background: 'linear-gradient(to bottom, #fde725 0%, #b8de29 10%, #6ece58 20%, #35b779 35%, #21918c 50%, #2c728e 65%, #31688e 80%, #3b528b 90%, #440154 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '2px',
-                position: 'relative'
-              }}>
-                {/* Scale labels */}
-                <div style={{
-                  position: 'absolute',
-                  right: '14px',
-                  top: '0',
-                  fontSize: '8px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1'
-                }}>1.0</div>
-                <div style={{
-                  position: 'absolute',
-                  right: '14px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  fontSize: '8px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1'
-                }}>0.5</div>
-                <div style={{
-                  position: 'absolute',
-                  right: '14px',
-                  bottom: '0',
-                  fontSize: '8px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1'
-                }}>0.0</div>
-              </div>
-            </div>
+            )}
             </div>
           </div>
         )}
