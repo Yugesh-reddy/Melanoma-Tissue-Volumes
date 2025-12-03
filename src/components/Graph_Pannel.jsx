@@ -18,6 +18,12 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const chartRef = useRef(null);
+  
+  // Heatmap comparison state
+  const [box1Index, setBox1Index] = useState(0);
+  const [box2Index, setBox2Index] = useState(1);
+  const [showBox1Dropdown, setShowBox1Dropdown] = useState(false);
+  const [showBox2Dropdown, setShowBox2Dropdown] = useState(false);
 
   // Helper function to get biomarker name from channel index
   const getBiomarkerName = useCallback((channelIndex) => {
@@ -485,8 +491,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
 
     const width = container.clientWidth;
     const height = container.clientHeight;
-    // Significantly increased margins for labels
-    const margin = { top: 40, right: 80, bottom: 120, left: 60 };
+    // Margins - right margin adjusted for compare controls panel, slightly reduced for more heatmap width
+    const margin = { top: 40, right: 90, bottom: 120, left: 60 };
 
     const chartWidth = width - margin.left - margin.right;
     const chartHeight = height - margin.top - margin.bottom;
@@ -500,13 +506,17 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     const statsArray = Object.values(channelStats);
     if (statsArray.length === 0) return;
 
-    // Check if we have multiple regions (at least 2)
-    const hasMultipleRegions = statsArray.some(d => d.regions && d.regions.length >= 2);
+    // Get regions array and check if we have multiple regions
+    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
+    const hasMultipleRegions = regionsArray.length >= 2;
+    
+    // Validate selected indices
+    const validBox1Index = Math.min(box1Index, regionsArray.length - 1);
+    const validBox2Index = hasMultipleRegions ? Math.min(box2Index, regionsArray.length - 1) : validBox1Index;
     
     // Box colors from selection data (synced with Main_View wireframes and Local_View tabs)
-    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
-    const box1Color = regionsArray[0]?.color || getSelectionColor(0);
-    const box2Color = regionsArray[1]?.color || getSelectionColor(1);
+    const box1Color = regionsArray[validBox1Index]?.color || getSelectionColor(validBox1Index);
+    const box2Color = regionsArray[validBox2Index]?.color || getSelectionColor(validBox2Index);
 
     // Compute correlation matrices for both boxes
     const correlationMatrix1 = [];
@@ -522,23 +532,23 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           correlationMatrix1[i][j] = 1.0;
           correlationMatrix2[i][j] = 1.0;
         } else {
-          // Get distributions from first two boxes
-          const dist1Box1 = statsArray[i].regions && statsArray[i].regions[0] 
-            ? statsArray[i].regions[0].distribution 
+          // Get distributions from selected boxes
+          const dist1Box1 = statsArray[i].regions && statsArray[i].regions[validBox1Index] 
+            ? statsArray[i].regions[validBox1Index].distribution 
             : statsArray[i].distribution;
-          const dist2Box1 = statsArray[j].regions && statsArray[j].regions[0] 
-            ? statsArray[j].regions[0].distribution 
+          const dist2Box1 = statsArray[j].regions && statsArray[j].regions[validBox1Index] 
+            ? statsArray[j].regions[validBox1Index].distribution 
             : statsArray[j].distribution;
           
-          const dist1Box2 = statsArray[i].regions && statsArray[i].regions.length > 1 && statsArray[i].regions[1]
-            ? statsArray[i].regions[1].distribution 
+          const dist1Box2 = statsArray[i].regions && statsArray[i].regions[validBox2Index]
+            ? statsArray[i].regions[validBox2Index].distribution 
             : dist1Box1;
-          const dist2Box2 = statsArray[j].regions && statsArray[j].regions.length > 1 && statsArray[j].regions[1]
-            ? statsArray[j].regions[1].distribution 
+          const dist2Box2 = statsArray[j].regions && statsArray[j].regions[validBox2Index]
+            ? statsArray[j].regions[validBox2Index].distribution 
             : dist2Box1;
 
           const correlation1 = calculatePearsonCorrelation(dist1Box1, dist2Box1);
-          const correlation2 = hasMultipleRegions 
+          const correlation2 = hasMultipleRegions && validBox1Index !== validBox2Index
             ? calculatePearsonCorrelation(dist1Box2, dist2Box2)
             : correlation1;
           
@@ -563,19 +573,64 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     const colorScale = d3.scaleSequential(d3.interpolateViridis)
       .domain([0, 1]);
 
-    // Cells - split each cell into two halves for two boxes
+    // Determine if we should show comparison view
+    const showComparison = hasMultipleRegions && validBox1Index !== validBox2Index;
+    
+    // Cells - split each cell into two halves for comparison, or full cell for single
     for (let i = 0; i < statsArray.length; i++) {
       for (let j = 0; j < statsArray.length; j++) {
         const cellWidth = xScale.bandwidth();
         const cellHeight = yScale.bandwidth();
         
-        if (hasMultipleRegions) {
-          // Split cell into two halves
+        if (showComparison) {
+          // Split cell into two halves with clear visual separation
           // Left half: Box 1
           g.append('rect')
             .attr('x', xScale(channelNames[j]))
             .attr('y', yScale(channelNames[i]))
-            .attr('width', cellWidth / 2)
+            .attr('width', cellWidth / 2 - 1) // Gap between cells
+            .attr('height', cellHeight)
+            .attr('fill', colorScale(correlationMatrix1[i][j]))
+            .attr('stroke', box1Color)
+            .attr('stroke-width', 2)
+            .on('mouseover', function (event) {
+              d3.select(this).attr('stroke-width', 3);
+              tooltip.style('opacity', 1)
+                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box ${validBox1Index + 1}<br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+            })
+            .on('mouseout', function () {
+              d3.select(this).attr('stroke-width', 2);
+              tooltip.style('opacity', 0);
+            });
+          
+          // Right half: Box 2
+          g.append('rect')
+            .attr('x', xScale(channelNames[j]) + cellWidth / 2 + 1) // Gap between cells
+            .attr('y', yScale(channelNames[i]))
+            .attr('width', cellWidth / 2 - 1)
+            .attr('height', cellHeight)
+            .attr('fill', colorScale(correlationMatrix2[i][j]))
+            .attr('stroke', box2Color)
+            .attr('stroke-width', 2)
+            .on('mouseover', function (event) {
+              d3.select(this).attr('stroke-width', 3);
+              tooltip.style('opacity', 1)
+                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box ${validBox2Index + 1}<br/>Correlation: ${correlationMatrix2[i][j].toFixed(3)}`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+            })
+            .on('mouseout', function () {
+              d3.select(this).attr('stroke-width', 2);
+              tooltip.style('opacity', 0);
+            });
+        } else {
+          // Single box - show full cell with box color border
+          g.append('rect')
+            .attr('x', xScale(channelNames[j]))
+            .attr('y', yScale(channelNames[i]))
+            .attr('width', cellWidth)
             .attr('height', cellHeight)
             .attr('fill', colorScale(correlationMatrix1[i][j]))
             .attr('stroke', box1Color)
@@ -583,54 +638,12 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
             .on('mouseover', function (event) {
               d3.select(this).attr('stroke-width', 2);
               tooltip.style('opacity', 1)
-                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box 1<br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
+                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box ${validBox1Index + 1}<br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
                 .style('left', (event.pageX + 10) + 'px')
                 .style('top', (event.pageY - 10) + 'px');
             })
             .on('mouseout', function () {
               d3.select(this).attr('stroke-width', 1);
-              tooltip.style('opacity', 0);
-            });
-          
-          // Right half: Box 2
-          g.append('rect')
-            .attr('x', xScale(channelNames[j]) + cellWidth / 2)
-            .attr('y', yScale(channelNames[i]))
-            .attr('width', cellWidth / 2)
-            .attr('height', cellHeight)
-            .attr('fill', colorScale(correlationMatrix2[i][j]))
-            .attr('stroke', box2Color)
-            .attr('stroke-width', 1)
-            .on('mouseover', function (event) {
-              d3.select(this).attr('stroke-width', 2);
-              tooltip.style('opacity', 1)
-                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box 2<br/>Correlation: ${correlationMatrix2[i][j].toFixed(3)}`)
-                .style('left', (event.pageX + 10) + 'px')
-                .style('top', (event.pageY - 10) + 'px');
-            })
-            .on('mouseout', function () {
-              d3.select(this).attr('stroke-width', 1);
-              tooltip.style('opacity', 0);
-            });
-        } else {
-          // Single box - show full cell
-          g.append('rect')
-            .attr('x', xScale(channelNames[j]))
-            .attr('y', yScale(channelNames[i]))
-            .attr('width', cellWidth)
-            .attr('height', cellHeight)
-            .attr('fill', colorScale(correlationMatrix1[i][j]))
-            .attr('stroke', '#000')
-            .attr('stroke-width', 0.5)
-            .on('mouseover', function (event) {
-              d3.select(this).attr('stroke-width', 2);
-              tooltip.style('opacity', 1)
-                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
-                .style('left', (event.pageX + 10) + 'px')
-                .style('top', (event.pageY - 10) + 'px');
-            })
-            .on('mouseout', function () {
-              d3.select(this).attr('stroke-width', 0.5);
               tooltip.style('opacity', 0);
             });
         }
@@ -642,11 +655,11 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       .attr('transform', `translate(0,${chartHeight})`)
       .call(d3.axisBottom(xScale));
 
-    // Scalable labels
+    // Horizontal labels
     xAxis.selectAll('text')
       .style('fill', '#fff')
-      .attr('transform', 'rotate(-45)')
-      .style('text-anchor', 'end')
+      .style('text-anchor', 'middle')
+      .attr('dy', '1em')
       .style('font-size', channelNames.length > 15 ? '9px' : '11px');
 
     // Y axis
@@ -657,118 +670,20 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       .style('fill', '#fff')
       .style('font-size', channelNames.length > 15 ? '9px' : '11px');
 
-    // Title
-    const titleText = hasMultipleRegions 
-      ? 'Biomarker Co-expression Heatmap (Box 1 vs Box 2)'
-      : 'Biomarker Co-expression Heatmap';
+    // Title - shows which boxes are being compared
+    const titleText = showComparison 
+      ? `Heatmap: Box ${validBox1Index + 1} vs Box ${validBox2Index + 1}`
+      : `Heatmap: Box ${validBox1Index + 1}`;
     g.append('text')
       .attr('x', chartWidth / 2)
       .attr('y', -20)
       .style('text-anchor', 'middle')
       .style('fill', '#fff')
-      .style('font-size', '14px')
+      .style('font-size', '13px')
       .style('font-weight', 'bold')
       .text(titleText);
 
-    // Legend for two boxes if multiple regions
-    if (hasMultipleRegions) {
-      const legendY = -5;
-      const legendX = chartWidth - 150;
-      
-      // Box 1 legend
-      g.append('rect')
-        .attr('x', legendX)
-        .attr('y', legendY)
-        .attr('width', 12)
-        .attr('height', 12)
-        .attr('fill', 'none')
-        .attr('stroke', box1Color)
-        .attr('stroke-width', 2);
-      
-      g.append('text')
-        .attr('x', legendX + 18)
-        .attr('y', legendY + 9)
-        .style('fill', box1Color)
-        .style('font-size', '11px')
-        .text('Box 1');
-      
-      // Box 2 legend
-      g.append('rect')
-        .attr('x', legendX + 70)
-        .attr('y', legendY)
-        .attr('width', 12)
-        .attr('height', 12)
-        .attr('fill', 'none')
-        .attr('stroke', box2Color)
-        .attr('stroke-width', 2);
-      
-      g.append('text')
-        .attr('x', legendX + 88)
-        .attr('y', legendY + 9)
-        .style('fill', box2Color)
-        .style('font-size', '11px')
-        .text('Box 2');
-    }
-
-    // Add color legend (Vertical on the Right)
-    const legendWidth = 15;
-    const legendHeight = Math.min(200, chartHeight);
-    const legendX = chartWidth + 20;
-    const legendY = (chartHeight - legendHeight) / 2;
-
-    const legendScale = d3.scaleLinear()
-      .domain([1, 0]) // Top is 1, bottom is 0
-      .range([0, legendHeight]);
-
-    const gradientId = `heatmap-gradient-${Date.now()}`;
-    const legendGradient = svg.append('defs')
-      .append('linearGradient')
-      .attr('id', gradientId)
-      .attr('x1', '0%')
-      .attr('x2', '0%')
-      .attr('y1', '0%')
-      .attr('y2', '100%');
-
-    // Create gradient stops
-    // Stop 0% = Top = 1 (Red)
-    // Stop 50% = Middle = 0 (White)
-    // Stop 100% = Bottom = -1 (Blue)
-    for (let i = 0; i <= 100; i++) {
-      const t = i / 100;
-      // Map t (0..1) to value (1..0)
-      const value = 1 - t;
-      legendGradient.append('stop')
-        .attr('offset', `${i}%`)
-        .attr('stop-color', colorScale(value));
-    }
-
-    g.append('rect')
-      .attr('x', legendX)
-      .attr('y', legendY)
-      .attr('width', legendWidth)
-      .attr('height', legendHeight)
-      .style('fill', `url(#${gradientId})`)
-      .style('stroke', '#666')
-      .style('stroke-width', 1);
-
-    const legendAxis = d3.axisRight(legendScale)
-      .ticks(5)
-      .tickFormat(d => d.toFixed(1));
-
-    g.append('g')
-      .attr('transform', `translate(${legendX + legendWidth}, ${legendY})`)
-      .call(legendAxis)
-      .selectAll('text')
-      .style('fill', '#fff')
-      .style('font-size', '10px');
-
-    g.append('text')
-      .attr('x', legendX + legendWidth / 2)
-      .attr('y', legendY - 10)
-      .style('text-anchor', 'middle')
-      .style('fill', '#fff')
-      .style('font-size', '11px')
-      .text('Corr');
+    // Correlation scale is now rendered in React component on the right panel
 
     // Tooltip
     const tooltip = d3.select('body').append('div')
@@ -784,7 +699,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       .style('z-index', '10000');
 
     chartRef.current = { tooltip };
-  }, [channelStats]);
+  }, [channelStats, box1Index, box2Index, selectedRegionsData, selectedRegionData]);
 
   // Calculate Pearson correlation
   const calculatePearsonCorrelation = (x, y) => {
@@ -1252,6 +1167,37 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     };
   }, [graphType, channelStats, loading, renderBarChart, renderHeatmap, renderViolinPlot]);
 
+  // Reset box indices when selections change
+  useEffect(() => {
+    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
+    if (regionsArray.length === 0) {
+      setBox1Index(0);
+      setBox2Index(1);
+    } else if (regionsArray.length === 1) {
+      setBox1Index(0);
+      setBox2Index(0);
+    } else {
+      // When 2+ boxes available, default to comparing Box 1 vs Box 2
+      setBox1Index(0);
+      setBox2Index(1);
+    }
+  }, [selectedRegionsData, selectedRegionData]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showBox1Dropdown || showBox2Dropdown) {
+        const target = event.target;
+        if (!target.closest('[data-dropdown]')) {
+          setShowBox1Dropdown(false);
+          setShowBox2Dropdown(false);
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showBox1Dropdown, showBox2Dropdown]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1414,70 +1360,414 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       {/* Chart Area */}
       <div style={{
         flex: 1,
-        padding: '0px', // Removed padding to use full space
-        overflow: 'hidden', // Changed from auto to hidden to prevent scrollbars
+        padding: '0px',
+        overflow: 'hidden',
         position: 'relative',
         width: '100%',
-        height: '100%'
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'row'
       }}>
-        {loading && (
+        {/* SVG Container */}
+        <div style={{
+          flex: 1,
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {loading && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: '#666',
+              fontSize: '12px'
+            }}>
+              Loading...
+            </div>
+          )}
+
+          {error && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: '#f44',
+              fontSize: '12px',
+              textAlign: 'center'
+            }}>
+              Error: {error}
+            </div>
+          )}
+
+          {!loading && !error && !selectedRegionData && (!selectedRegionsData || selectedRegionsData.length === 0) && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: '#666',
+              fontSize: '12px',
+              textAlign: 'center'
+            }}>
+              <div>No selection made</div>
+              <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
+            </div>
+          )}
+
+          {!loading && !error && (selectedRegionData || (selectedRegionsData && selectedRegionsData.length > 0)) && (!channelStats || Object.keys(channelStats).length === 0) && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: '#666',
+              fontSize: '12px',
+              textAlign: 'center'
+            }}>
+              <div>No channel data available</div>
+              <div style={{ fontSize: '10px', marginTop: '5px' }}>Enable channels to see statistics</div>
+            </div>
+          )}
+
+          <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
+        </div>
+
+        {/* Correlation Scale - Show only for single selection heatmaps */}
+        {graphType === 'heatmap' && selectedRegionsData && selectedRegionsData.length === 1 && (
           <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            color: '#666',
-            fontSize: '12px'
+            width: '70px',
+            padding: '8px 4px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            backgroundColor: 'transparent',
+            flexShrink: 0,
+            overflow: 'visible',
+            justifyContent: 'center'
           }}>
-            Loading...
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center'
+            }}>
+              <div style={{
+                fontSize: '9px',
+                color: 'rgba(255, 255, 255, 0.7)',
+                marginBottom: '4px',
+                fontWeight: '500'
+              }}>
+                Corr
+              </div>
+              <div style={{
+                width: '12px',
+                height: '180px',
+                background: 'linear-gradient(to bottom, #fde725 0%, #b8de29 10%, #6ece58 20%, #35b779 35%, #21918c 50%, #2c728e 65%, #31688e 80%, #3b528b 90%, #440154 100%)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '2px',
+                position: 'relative'
+              }}>
+                {/* Scale labels */}
+                <div style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '0',
+                  fontSize: '8px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  lineHeight: '1'
+                }}>1.0</div>
+                <div style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  fontSize: '8px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  lineHeight: '1'
+                }}>0.5</div>
+                <div style={{
+                  position: 'absolute',
+                  right: '14px',
+                  bottom: '0',
+                  fontSize: '8px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  lineHeight: '1'
+                }}>0.0</div>
+              </div>
+            </div>
           </div>
         )}
 
-        {error && (
+        {/* Selection Controls - Only show for heatmap with multiple selections */}
+        {graphType === 'heatmap' && selectedRegionsData && selectedRegionsData.length >= 2 && (
           <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            color: '#f44',
-            fontSize: '12px',
-            textAlign: 'center'
+            width: '70px',
+            padding: '8px 4px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            backgroundColor: 'transparent',
+            flexShrink: 0,
+            overflow: 'visible'
           }}>
-            Error: {error}
+            {/* Compare Controls - Top */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <div style={{
+                fontSize: '9px',
+                color: 'rgba(255, 255, 255, 0.5)',
+                textAlign: 'center',
+                marginBottom: '2px'
+              }}>
+                Compare
+              </div>
+            
+            {/* Select Box 1 */}
+            <div style={{ position: 'relative' }} data-dropdown>
+              <button
+                onClick={() => {
+                  setShowBox1Dropdown(!showBox1Dropdown);
+                  setShowBox2Dropdown(false);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '4px 4px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: `2px solid ${selectedRegionsData[box1Index]?.color || getSelectionColor(box1Index)}`,
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.9)',
+                  fontSize: '9px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '2px',
+                  backgroundColor: selectedRegionsData[box1Index]?.color || getSelectionColor(box1Index),
+                  flexShrink: 0
+                }} />
+                <span>Box {box1Index + 1}</span>
+              </button>
+              {showBox1Dropdown && (
+                <div data-dropdown style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: '2px',
+                  background: 'rgba(0, 0, 0, 0.95)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '4px',
+                  zIndex: 1000,
+                  maxHeight: '150px',
+                  overflowY: 'auto'
+                }}>
+                  {selectedRegionsData.map((region, index) => {
+                    const color = region.color || getSelectionColor(index);
+                    const isSelected = index === box1Index;
+                    return (
+                      <button
+                        key={region.id || index}
+                        onClick={() => {
+                          setBox1Index(index);
+                          setShowBox1Dropdown(false);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '5px 6px',
+                          background: isSelected ? `${color}33` : 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: isSelected ? color : 'rgba(255, 255, 255, 0.7)',
+                          fontSize: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) e.target.style.background = 'transparent';
+                        }}
+                      >
+                        <div style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '2px',
+                          backgroundColor: color,
+                          flexShrink: 0
+                        }} />
+                        <span>Box {index + 1}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              fontSize: '9px',
+              color: 'rgba(255, 255, 255, 0.4)',
+              textAlign: 'center'
+            }}>vs</div>
+
+            {/* Select Box 2 */}
+            <div style={{ position: 'relative' }} data-dropdown>
+              <button
+                onClick={() => {
+                  setShowBox2Dropdown(!showBox2Dropdown);
+                  setShowBox1Dropdown(false);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '4px 4px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: `2px solid ${selectedRegionsData[box2Index]?.color || getSelectionColor(box2Index)}`,
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.9)',
+                  fontSize: '9px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '2px',
+                  backgroundColor: selectedRegionsData[box2Index]?.color || getSelectionColor(box2Index),
+                  flexShrink: 0
+                }} />
+                <span>Box {box2Index + 1}</span>
+              </button>
+              {showBox2Dropdown && (
+                <div data-dropdown style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: '2px',
+                  background: 'rgba(0, 0, 0, 0.95)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '4px',
+                  zIndex: 1000,
+                  maxHeight: '150px',
+                  overflowY: 'auto'
+                }}>
+                  {selectedRegionsData.map((region, index) => {
+                    const color = region.color || getSelectionColor(index);
+                    const isSelected = index === box2Index;
+                    return (
+                      <button
+                        key={region.id || index}
+                        onClick={() => {
+                          setBox2Index(index);
+                          setShowBox2Dropdown(false);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '5px 6px',
+                          background: isSelected ? `${color}33` : 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: isSelected ? color : 'rgba(255, 255, 255, 0.7)',
+                          fontSize: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) e.target.style.background = 'transparent';
+                        }}
+                      >
+                        <div style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '2px',
+                          backgroundColor: color,
+                          flexShrink: 0
+                        }} />
+                        <span>Box {index + 1}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Correlation Scale - Right under Box 2 */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              marginTop: '8px'
+            }}>
+              <div style={{
+                fontSize: '9px',
+                color: 'rgba(255, 255, 255, 0.7)',
+                marginBottom: '4px',
+                fontWeight: '500'
+              }}>
+                Corr
+              </div>
+              <div style={{
+                width: '12px',
+                height: '180px',
+                background: 'linear-gradient(to bottom, #fde725 0%, #b8de29 10%, #6ece58 20%, #35b779 35%, #21918c 50%, #2c728e 65%, #31688e 80%, #3b528b 90%, #440154 100%)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '2px',
+                position: 'relative'
+              }}>
+                {/* Scale labels */}
+                <div style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '0',
+                  fontSize: '8px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  lineHeight: '1'
+                }}>1.0</div>
+                <div style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  fontSize: '8px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  lineHeight: '1'
+                }}>0.5</div>
+                <div style={{
+                  position: 'absolute',
+                  right: '14px',
+                  bottom: '0',
+                  fontSize: '8px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  lineHeight: '1'
+                }}>0.0</div>
+              </div>
+            </div>
+            </div>
           </div>
         )}
-
-        {!loading && !error && !selectedRegionData && (!selectedRegionsData || selectedRegionsData.length === 0) && (
-          <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            color: '#666',
-            fontSize: '12px',
-            textAlign: 'center'
-          }}>
-            <div>No selection made</div>
-            <div style={{ fontSize: '10px', marginTop: '5px' }}>Select a region in Main View</div>
-          </div>
-        )}
-
-        {!loading && !error && (selectedRegionData || (selectedRegionsData && selectedRegionsData.length > 0)) && (!channelStats || Object.keys(channelStats).length === 0) && (
-          <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            color: '#666',
-            fontSize: '12px',
-            textAlign: 'center'
-          }}>
-            <div>No channel data available</div>
-            <div style={{ fontSize: '10px', marginTop: '5px' }}>Enable channels to see statistics</div>
-          </div>
-        )}
-
-        <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
       </div>
     </div>
   );
