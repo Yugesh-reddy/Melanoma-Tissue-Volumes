@@ -4,7 +4,25 @@
 - Hossein Fathollahian
 - Yugesh Reddy Sappidi
 
-This is a React + Three.js test application with an interactive rotating cube for the Melanoma Tissue Volumes project.
+## About the Project
+
+This project is a **Microscopy Dashboard** designed to support the investigation of biopsy tissue CyCF (Cyclic Immunofluorescence) microscopic images. Developed for the Visual Data Science graduate course at the University of Illinois Chicago (Fall 2025), in collaboration with Dr. Lei Duan and Dr. Carl Maki of Rush Medical University.
+
+The dashboard provides an interactive 3D visualization and analysis platform for biomedical researchers to explore, analyze, and compare tissue samples with multiple biomarker channels. It combines advanced visualization techniques with statistical analysis tools to help researchers understand complex patterns in biomedical data.
+
+### Key Features
+
+- **Interactive 3D Visualization**: Explore tissue volumes in 3D space with rotation, zoom, and pan controls
+- **Multi-Channel Analysis**: Visualize and compare multiple biomarker channels simultaneously
+- **Region Selection**: Select and analyze specific tissue regions using 3D selection boxes
+- **Statistical Analysis**: View detailed statistics including cell counts, density, and intensity distributions
+- **Multiple Visualization Modes**: Bar charts, heatmaps, and violin plots for data analysis
+- **Local View**: Detailed examination of selected regions in separate tabs
+- **Direction Analysis**: Spatial orientation and directional analysis of biomarker distributions
+
+### Live Demo
+
+🌐 **Online Version**: [https://hosseinfatho.github.io/BioProject/](https://hosseinfatho.github.io/BioProject/)
 
 ## Technology Stack
 
