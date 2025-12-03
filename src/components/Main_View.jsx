@@ -95,6 +95,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
   const selectionEndRef = useRef(null);
   const isTogglingRef = useRef(false);
   const currentSelectionBoundsRef = useRef(initialSelectionBounds || null); // Store current selection bounds for refreshing on channel change
+  const handleSelectionCompleteRef = useRef(null); // Ref to store handleSelectionComplete to avoid scene re-init
   const [dataLoadVersion, setDataLoadVersion] = useState(0); // Track data loading updates
 
   // 3D Cuboid selection state
@@ -1015,6 +1016,11 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     }
   }, [channels, onSelectionChange, extractSelectedRegion]);
 
+  // Keep the ref updated with the latest handleSelectionComplete
+  useEffect(() => {
+    handleSelectionCompleteRef.current = handleSelectionComplete;
+  }, [handleSelectionComplete]);
+
   // Refresh selection when channels change or data loads
   useEffect(() => {
     if (currentSelectionBoundsRef.current) {
@@ -1280,9 +1286,11 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
               // Extract and send selection data
               console.log('Main_View: Calling handleSelectionComplete...');
-              handleSelectionComplete(worldBounds).catch(err => {
-                console.error('Main_View: Error in handleSelectionComplete:', err);
-              });
+              if (handleSelectionCompleteRef.current) {
+                handleSelectionCompleteRef.current(worldBounds).catch(err => {
+                  console.error('Main_View: Error in handleSelectionComplete:', err);
+                });
+              }
             } catch (err) {
               console.error('Main_View: Error updating cuboid wireframe:', err);
             }
@@ -1562,7 +1570,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       }
       renderer.dispose();
     };
-  }, [handleMovement, renderScene, updateCameraPosition, updateChannelLOD, handleSelectionComplete]);
+  }, [handleMovement, renderScene, updateCameraPosition, updateChannelLOD]);
 
   useEffect(() => {
     const scene = sceneRef.current;
