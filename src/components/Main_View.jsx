@@ -25,6 +25,15 @@ const AMBIENT_COLOR = new THREE.Color(0.9, 0.9, 0.95);
 const DEFAULT_THRESHOLD_MIN_FRACTION = 0.1;
 const DEFAULT_THRESHOLD_MAX_FRACTION = 0.9;
 
+// Color map for selection boxes
+const BOX_COLOR_MAP = [
+  '#ca0020', // First box - Red
+  '#f4a582', // Second box - Light orange
+  '#f7f7f7', // Third box - Light gray
+  '#92c5de', // Fourth box - Light blue
+  '#0571b0'  // Fifth box - Dark blue
+];
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const disposeMesh = (mesh) => {
@@ -370,15 +379,63 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     renderScene();
   }, [createChannelVisualization, getDesiredSampling, renderScene]);
 
-  // Reset camera to initial state
+  // Reset camera to initial state and clear all boxes
   const resetCameraView = useCallback(() => {
     cameraStateRef.current = { ...CAMERA_INITIAL_STATE };
     if (cameraRef.current) {
       updateCameraPosition();
       updateChannelLOD();
     }
-    console.log('Main_View: Camera reset to initial state');
-  }, [updateCameraPosition, updateChannelLOD]);
+    
+    // Clear all selection boxes
+    const scene = sceneRef.current;
+    if (scene) {
+      // Remove all wireframes from scene
+      cuboidWireframesRef.current.forEach((wireframe) => {
+        if (wireframe && scene.children.includes(wireframe)) {
+          try {
+            scene.remove(wireframe);
+            if (wireframe.geometry) wireframe.geometry.dispose();
+            if (wireframe.material) wireframe.material.dispose();
+          } catch (err) {
+            console.error('Main_View: Error removing wireframe:', err);
+          }
+        }
+      });
+      
+      // Remove temporary wireframe if exists
+      if (cuboidWireframeRef.current && scene.children.includes(cuboidWireframeRef.current)) {
+        try {
+          scene.remove(cuboidWireframeRef.current);
+          if (cuboidWireframeRef.current.geometry) cuboidWireframeRef.current.geometry.dispose();
+          if (cuboidWireframeRef.current.material) cuboidWireframeRef.current.material.dispose();
+        } catch (err) {
+          console.error('Main_View: Error removing temporary wireframe:', err);
+        }
+      }
+    }
+    
+    // Clear all references
+    cuboidWireframesRef.current = [];
+    cuboidWireframeRef.current = null;
+    cuboidRef.current = null;
+    wireframeRegionMapRef.current.clear();
+    currentSelectionBoundsRef.current = null;
+    
+    // Reset state
+    setCuboidCenter(null);
+    setCuboidSize(null);
+    setSelectionStart(null);
+    setSelectionEnd(null);
+    
+    // Notify parent to clear selections
+    if (onSelectionChange) {
+      onSelectionChange(null);
+    }
+    
+    renderScene();
+    console.log('Main_View: Camera reset to initial state and all boxes cleared');
+  }, [updateCameraPosition, updateChannelLOD, onSelectionChange, renderScene]);
 
   const handleMovement = useCallback(() => {
     const camera = cameraRef.current;
@@ -542,13 +599,20 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
       const boxGeometry = new THREE.BoxGeometry(safeSizeX, safeSizeY, safeSizeZ);
       const boxEdges = new THREE.EdgesGeometry(boxGeometry);
+      
+      // Get color based on box index (number of non-temporary boxes)
+      const boxIndex = isTemporary ? cuboidWireframesRef.current.length : cuboidWireframesRef.current.length;
+      const boxColorHex = BOX_COLOR_MAP[boxIndex % BOX_COLOR_MAP.length];
+      const boxColor = parseInt(boxColorHex.replace('#', ''), 16);
+      
       const boxMaterial = new THREE.LineBasicMaterial({
-        color: 0x00ff00,
-        linewidth: 2,
+        color: boxColor,
+        linewidth: 6,
         transparent: true,
-        opacity: isTemporary ? 0.6 : 0.8
+        opacity: isTemporary ? 0.7 : 0.96
       });
       const wireframe = new THREE.LineSegments(boxEdges, boxMaterial);
+      wireframe.renderOrder = 100; // Render boxes on top
 
       // Validate center values
       if (center && !isNaN(center.x) && !isNaN(center.y) && !isNaN(center.z)) {
@@ -563,6 +627,9 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       } else {
         // Store worldBounds in userData for matching with selectedRegionsData
         wireframe.userData.worldBounds = worldBounds;
+        // Store color for reference
+        wireframe.userData.boxColor = boxColorHex;
+        wireframe.userData.boxIndex = boxIndex;
       }
 
       sceneRef.current.add(wireframe);
@@ -1678,12 +1745,12 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           color: 'white',
           padding: '10px 14px',
           borderRadius: '6px',
-          fontSize: '12px',
+          fontSize: '14px',
           maxWidth: '220px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
           lineHeight: '1.5'
         }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>📦 How to Select:</div>
+          <div style={{ fontWeight: 'bold', marginBottom: '6px' }}> How to Select:</div>
           <div>• <strong>Click & drag</strong> to draw selection box</div>
           <div>• <strong>Scroll</strong> while drawing to adjust Z-depth</div>
           <div>• Release to confirm selection</div>
