@@ -5,6 +5,9 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass';
+import { Line2 } from 'three/examples/jsm/lines/Line2';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial';
 import { loadChannelData } from '../hooks/useChannelData';
 
 const CAMERA_INITIAL_STATE = {
@@ -735,16 +738,61 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       // Determine color - use override, or get from current selection count
       const wireframeColor = colorOverride || getSelectionColor(cuboidWireframesRef.current.length);
 
-      const boxGeometry = new THREE.BoxGeometry(safeSizeX, safeSizeY, safeSizeZ);
-      const boxEdges = new THREE.EdgesGeometry(boxGeometry);
-      const boxMaterial = new THREE.LineBasicMaterial({
-        color: wireframeColor,
-        linewidth: 2,
-        transparent: true,
-        opacity: isTemporary ? 0.6 : 0.8
-      });
-      const wireframe = new THREE.LineSegments(boxEdges, boxMaterial);
-      wireframe.userData.color = wireframeColor; // Store color for reference
+      // Create thick line box using Line2 (supports actual line width)
+      const halfX = safeSizeX / 2;
+      const halfY = safeSizeY / 2;
+      const halfZ = safeSizeZ / 2;
+      
+      // Define the 12 edges of a box as line segments
+      const boxEdgePositions = [
+        // Bottom face edges
+        -halfX, -halfY, -halfZ,  halfX, -halfY, -halfZ,
+         halfX, -halfY, -halfZ,  halfX,  halfY, -halfZ,
+         halfX,  halfY, -halfZ, -halfX,  halfY, -halfZ,
+        -halfX,  halfY, -halfZ, -halfX, -halfY, -halfZ,
+        // Top face edges
+        -halfX, -halfY,  halfZ,  halfX, -halfY,  halfZ,
+         halfX, -halfY,  halfZ,  halfX,  halfY,  halfZ,
+         halfX,  halfY,  halfZ, -halfX,  halfY,  halfZ,
+        -halfX,  halfY,  halfZ, -halfX, -halfY,  halfZ,
+        // Vertical edges connecting top and bottom
+        -halfX, -halfY, -halfZ, -halfX, -halfY,  halfZ,
+         halfX, -halfY, -halfZ,  halfX, -halfY,  halfZ,
+         halfX,  halfY, -halfZ,  halfX,  halfY,  halfZ,
+        -halfX,  halfY, -halfZ, -halfX,  halfY,  halfZ
+      ];
+      
+      // Create a group to hold all edge lines
+      const wireframe = new THREE.Group();
+      wireframe.userData.color = wireframeColor;
+      wireframe.renderOrder = 999;
+      
+      // Parse color to get RGB values
+      const color = new THREE.Color(wireframeColor);
+      
+      // Create each edge as a thick Line2
+      for (let i = 0; i < boxEdgePositions.length; i += 6) {
+        const lineGeometry = new LineGeometry();
+        lineGeometry.setPositions([
+          boxEdgePositions[i], boxEdgePositions[i + 1], boxEdgePositions[i + 2],
+          boxEdgePositions[i + 3], boxEdgePositions[i + 4], boxEdgePositions[i + 5]
+        ]);
+        
+        const lineMaterial = new LineMaterial({
+          color: color.getHex(),
+          linewidth: isTemporary ? 2 : 3, // Pixel width - thinner but visible
+          transparent: true,
+          opacity: isTemporary ? 0.7 : 1.0,
+          depthTest: false,
+          depthWrite: false,
+          resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
+        });
+        
+        const line = new Line2(lineGeometry, lineMaterial);
+        line.computeLineDistances();
+        line.renderOrder = 999;
+        wireframe.add(line);
+      }
 
       // Validate center values
       if (center && !isNaN(center.x) && !isNaN(center.y) && !isNaN(center.z)) {
@@ -933,11 +981,19 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     try {
       const selectedData = await extractSelectedRegion(worldBounds);
       if (selectedData) {
+        // Get the color from the last added wireframe (for consistency across components)
+        const lastWireframe = cuboidWireframesRef.current[cuboidWireframesRef.current.length - 1];
+        const wireframeColor = lastWireframe?.userData?.color || getSelectionColor(cuboidWireframesRef.current.length - 1);
+        
+        // Include wireframe color in selection data for consistency
+        selectedData.color = wireframeColor;
+        
         console.log('Main_View: ✓ Extracted selected region data:', selectedData);
         console.log('Main_View: Voxel bounds:', selectedData.bounds);
         console.log('Main_View: Channels count:', selectedData.channels.length);
         console.log('Main_View: Channels:', selectedData.channels);
         console.log('Main_View: Scaling factors:', selectedData.scaling);
+        console.log('Main_View: Assigned color:', wireframeColor);
 
         if (onSelectionChange) {
           onSelectionChange(selectedData);

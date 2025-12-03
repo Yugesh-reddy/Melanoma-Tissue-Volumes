@@ -94,12 +94,14 @@ function App() {
         return prev;
       }
 
-      // Assign color based on the new index
+      // Use color from Main_View wireframe for consistency, fallback to computed color
       const newIndex = prev.length;
+      const assignedColor = selectedData.color || getSelectionColor(newIndex);
+      
       const selectionWithIdAndColor = {
         ...selectedData,
         id: Date.now(),
-        color: getSelectionColor(newIndex),
+        color: assignedColor,
         index: newIndex
       };
 
