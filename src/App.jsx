@@ -17,16 +17,16 @@ const rgbToHex = (r, g, b) => {
 
 // Selection box colors - distinct, vibrant colors for easy identification
 const SELECTION_COLORS = [
-  '#4ade80', // Green (default)
-  '#60a5fa', // Blue
-  '#f472b6', // Pink
+  '#60a5fa', // Blue (first selection)
   '#facc15', // Yellow
-  '#a78bfa', // Purple
+  '#e879f9', // Magenta
+  '#4ade80', // Green
   '#fb923c', // Orange
+  '#f472b6', // Pink
   '#22d3d8', // Cyan
   '#f87171', // Red
+  '#a78bfa', // Purple
   '#84cc16', // Lime
-  '#e879f9', // Magenta
 ];
 
 // Get color for selection index (cycles through colors)
@@ -252,9 +252,9 @@ function App() {
           boxSizing: 'border-box',
           flexShrink: 0
         }}>
-          {/* Main View - 75% height */}
+          {/* Main View - 65% height */}
           <div style={{
-            height: '70%',
+            height: '65%',
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
@@ -269,9 +269,9 @@ function App() {
             />
           </div>
 
-          {/* Bottom panels - 30% height */}
+          {/* Bottom panels - 35% height */}
           <div style={{
-            height: '30%',
+            height: '35%',
             width: '100%',
             display: 'flex',
             overflow: 'hidden',

@@ -505,7 +505,7 @@ const Direction_view = ({ channels = [] }) => {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '8px 12px',
+        padding: '6px 10px',
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
         flexShrink: 0,
@@ -563,14 +563,14 @@ const Direction_view = ({ channels = [] }) => {
         <div
           style={{
             position: 'absolute',
-            top: '8px',
-            left: '8px',
-            background: 'rgba(0, 0, 0, 0.7)',
+            top: '6px',
+            left: '6px',
+            background: 'rgba(0, 0, 0, 0.8)',
             border: '1px solid rgba(255, 255, 255, 0.2)',
             borderRadius: '4px',
-            padding: '6px 10px',
+            padding: '4px 8px',
             color: '#ffffff',
-            fontSize: '12px',
+            fontSize: '11px',
             fontFamily: 'monospace',
             pointerEvents: 'none',
             zIndex: 1000
