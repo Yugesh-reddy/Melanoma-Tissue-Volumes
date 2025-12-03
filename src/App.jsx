@@ -213,9 +213,9 @@ function App() {
           boxSizing: 'border-box',
           flexShrink: 0
         }}>
-          {/* Main View - 75% height */}
+          {/* Main View - 68% height */}
           <div style={{
-            height: '70%',
+            height: '68%',
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
@@ -230,9 +230,9 @@ function App() {
             />
           </div>
 
-          {/* Bottom panels - 30% height */}
+          {/* Bottom panels - 32% height */}
           <div style={{
-            height: '30%',
+            height: '32%',
             width: '100%',
             display: 'flex',
             overflow: 'hidden',
