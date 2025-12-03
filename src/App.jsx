@@ -301,7 +301,12 @@ function App() {
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              <Graph_Pannel selectedRegionsData={selectedRegionsData} channels={channels} selectedRegions={selectedRegions} />
+              <Graph_Pannel 
+                key={selectedRegionsData.map(r => r.id).join('-') || 'empty'} 
+                selectedRegionsData={selectedRegionsData} 
+                channels={channels} 
+                selectedRegions={selectedRegions} 
+              />
             </div>
             {/* Direction View - 33.3% width */}
             <div style={{

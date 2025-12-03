@@ -28,6 +28,15 @@ const AMBIENT_COLOR = new THREE.Color(0.9, 0.9, 0.95);
 const DEFAULT_THRESHOLD_MIN_FRACTION = 0.1;
 const DEFAULT_THRESHOLD_MAX_FRACTION = 0.9;
 
+// Color map for selection boxes
+const BOX_COLOR_MAP = [
+  '#ca0020', // First box - Red
+  '#f4a582', // Second box - Light orange
+  '#f7f7f7', // Third box - Light gray
+  '#92c5de', // Fourth box - Light blue
+  '#0571b0'  // Fifth box - Dark blue
+];
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const disposeMesh = (mesh) => {
@@ -529,7 +538,11 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     
     // Update camera position
     if (cameraRef.current) {
+      // Update camera position to show default view
       updateCameraPosition();
+      
+      // Force LOD update to show data at appropriate quality for default view
+      lodStateRef.current.lastUpdate = 0; // Reset LOD cooldown to force update
       updateChannelLOD();
     }
     
@@ -809,6 +822,9 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       } else {
         // Store worldBounds in userData for matching with selectedRegionsData
         wireframe.userData.worldBounds = worldBounds;
+        // Store color for reference
+        wireframe.userData.boxColor = boxColorHex;
+        wireframe.userData.boxIndex = boxIndex;
       }
 
       sceneRef.current.add(wireframe);
