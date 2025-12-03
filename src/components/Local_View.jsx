@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { loadChannelData } from '../hooks/useChannelData';
 
@@ -1134,6 +1134,25 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
   // Support both array and single selection for backward compatibility
   const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [closedTabIds, setClosedTabIds] = useState(new Set());
+
+  // Create mapping from region to regionId for consistent identification
+  const regionIdMap = useMemo(() => {
+    const map = new Map();
+    regionsArray.forEach((region, index) => {
+      const regionId = region.id || index;
+      map.set(region, regionId);
+    });
+    return map;
+  }, [regionsArray]);
+
+  // Filter out closed tabs
+  const visibleRegions = useMemo(() => {
+    return regionsArray.filter((region) => {
+      const regionId = regionIdMap.get(region);
+      return regionId !== undefined && !closedTabIds.has(regionId);
+    });
+  }, [regionsArray, closedTabIds, regionIdMap]);
 
   // Debug: Log regions array
   useEffect(() => {
@@ -1142,11 +1161,47 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
 
   // Update active tab when new selection is added
   useEffect(() => {
-    if (regionsArray.length > 0) {
-      // Set active tab to the newest selection (last in array)
-      setActiveTabIndex(regionsArray.length - 1);
+    if (visibleRegions.length > 0) {
+      // Set active tab to the newest selection (last in visible array)
+      const newIndex = visibleRegions.length - 1;
+      setActiveTabIndex(newIndex);
     }
-  }, [regionsArray.length]);
+  }, [visibleRegions.length]);
+
+  // Handle closing a tab
+  const handleCloseTab = (e, region) => {
+    e.stopPropagation(); // Prevent tab activation when clicking close button
+    
+    const regionId = regionIdMap.get(region);
+    if (regionId === undefined) return;
+    
+    // Find current visible index of this tab
+    const currentVisibleIndex = visibleRegions.findIndex(r => {
+      const rId = regionIdMap.get(r);
+      return rId === regionId;
+    });
+    
+    // Adjust active tab index if we're closing the active tab
+    if (activeTabIndex === currentVisibleIndex) {
+      const remainingCount = visibleRegions.length - 1;
+      if (remainingCount > 0) {
+        // Switch to the previous tab, or stay at the same index if it becomes the last
+        const newIndex = Math.min(currentVisibleIndex, remainingCount - 1);
+        setActiveTabIndex(newIndex);
+      }
+    } else if (activeTabIndex > currentVisibleIndex) {
+      // If we're closing a tab before the active one, decrease the active index
+      setActiveTabIndex(prev => prev - 1);
+    }
+    
+    // Add to closed tabs
+    setClosedTabIds(prev => new Set([...prev, regionId]));
+    
+    // Notify parent to remove the region (which will also remove the box in Main View)
+    if (onRegionRemove) {
+      onRegionRemove(regionId);
+    }
+  };
 
   // Ensure activeTabIndex is valid
   useEffect(() => {
@@ -1370,7 +1425,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {regionsArray.map((region, index) => {
+        {visibleRegions.map((region, index) => {
           const isActive = activeTabIndex === index;
           return (
             <div
