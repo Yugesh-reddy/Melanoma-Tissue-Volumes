@@ -7,3 +7,6 @@ Implemented development updates and optimizations.
 ### [2025-12-10 22:05:12] - Feature: add standard deviation calculations to regionStats
 Implemented development updates and optimizations.
 
+### [2025-12-11 15:25:01] - Refactor: optimize memory usage for large dataset profiling
+Implemented development updates and optimizations.
+
