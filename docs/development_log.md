@@ -19,3 +19,6 @@ Implemented development updates and optimizations.
 ### [2025-12-11 17:02:05] - Feature: add melanoma tissue markers to database
 Implemented development updates and optimizations.
 
+### [2025-12-11 17:03:30] - Refactor: define phenotype classification rules
+Implemented development updates and optimizations.
+
