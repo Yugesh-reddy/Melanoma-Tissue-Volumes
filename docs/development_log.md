@@ -16,3 +16,6 @@ Implemented development updates and optimizations.
 ### [2025-12-11 16:11:39] - Refactor: outline marker information database
 Implemented development updates and optimizations.
 
+### [2025-12-11 17:02:05] - Feature: add melanoma tissue markers to database
+Implemented development updates and optimizations.
+
