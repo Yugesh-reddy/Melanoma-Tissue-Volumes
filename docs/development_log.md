@@ -25,3 +25,6 @@ Implemented development updates and optimizations.
 ### [2025-12-11 17:09:35] - Doc: explain marker score weights in knowledge base
 Implemented development updates and optimizations.
 
+### [2025-12-11 17:49:16] - Feature: implement markerKnowledgeBase and phenotypeEngine services
+Implemented development updates and optimizations.
+
