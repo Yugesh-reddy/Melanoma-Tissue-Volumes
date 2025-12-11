@@ -4,3 +4,6 @@ Implemented development updates and optimizations.
 ### [2025-12-10 20:04:00] - Doc: add comments describing calculation logic in regionStats
 Implemented development updates and optimizations.
 
+### [2025-12-10 22:05:12] - Feature: add standard deviation calculations to regionStats
+Implemented development updates and optimizations.
+
