@@ -49,3 +49,6 @@ Implemented development updates and optimizations.
 ### [2025-12-12 13:10:17] - Style: apply inline typography rules for markdown code tags
 Implemented development updates and optimizations.
 
+### [2025-12-12 13:15:10] - Feature: support lists and headers formatting in MarkdownLite
+Implemented development updates and optimizations.
+
