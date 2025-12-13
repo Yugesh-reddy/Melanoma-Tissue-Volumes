@@ -64,3 +64,6 @@ Implemented development updates and optimizations.
 ### [2025-12-13 10:16:02] - Style: design card container and title for AI panel
 Implemented development updates and optimizations.
 
+### [2025-12-13 12:35:20] - Feature: hook up MarkdownLite for displaying AI response text
+Implemented development updates and optimizations.
+
