@@ -94,3 +94,6 @@ Implemented development updates and optimizations.
 ### [2025-12-15 20:58:08] - Style: apply active states styling on channel rows
 Implemented development updates and optimizations.
 
+### [2025-12-15 21:36:40] - Fix: resolve channel selection update latency
+Implemented development updates and optimizations.
+
