@@ -91,3 +91,6 @@ Implemented development updates and optimizations.
 ### [2025-12-15 20:04:37] - Refactor: simplify channel list structure
 Implemented development updates and optimizations.
 
+### [2025-12-15 20:58:08] - Style: apply active states styling on channel rows
+Implemented development updates and optimizations.
+
