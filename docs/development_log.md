@@ -82,3 +82,6 @@ Implemented development updates and optimizations.
 ### [2025-12-15 19:20:56] - Doc: document region statistics inputs and formats
 Implemented development updates and optimizations.
 
+### [2025-12-15 19:30:39] - Doc: review phenotype matching rules
+Implemented development updates and optimizations.
+
