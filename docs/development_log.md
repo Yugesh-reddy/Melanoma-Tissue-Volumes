@@ -127,3 +127,6 @@ Implemented development updates and optimizations.
 ### [2025-12-17 12:20:43] - Fix: fix zooming/scaling offset calculation bugs
 Implemented development updates and optimizations.
 
+### [2025-12-17 12:25:31] - Doc: describe viewport projection math in comments
+Implemented development updates and optimizations.
+
