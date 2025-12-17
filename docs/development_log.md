@@ -109,3 +109,6 @@ Implemented development updates and optimizations.
 ### [2025-12-16 21:17:19] - Style: match region selections colors with standard palette
 Implemented development updates and optimizations.
 
+### [2025-12-17 10:33:49] - Feature: add multi-select support to region selection UI
+Implemented development updates and optimizations.
+
