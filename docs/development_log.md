@@ -106,3 +106,6 @@ Implemented development updates and optimizations.
 ### [2025-12-16 20:51:52] - Refactor: review region list rendering
 Implemented development updates and optimizations.
 
+### [2025-12-16 21:17:19] - Style: match region selections colors with standard palette
+Implemented development updates and optimizations.
+
