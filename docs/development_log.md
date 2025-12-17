@@ -124,3 +124,6 @@ Implemented development updates and optimizations.
 ### [2025-12-17 12:08:54] - Style: adjust container margins and header sizes
 Implemented development updates and optimizations.
 
+### [2025-12-17 12:20:43] - Fix: fix zooming/scaling offset calculation bugs
+Implemented development updates and optimizations.
+
