@@ -1125,7 +1125,7 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
 };
 
 // Main wrapper component with tabs support - UI similar to Graph Panel
-const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], onRemoveSelection, onClearAllSelections }) => {
+const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], onRemoveSelection, onClearAllSelections, onToggleMaximize, isMaximized = false }) => {
   // Support both array and single selection for backward compatibility
   const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
@@ -1241,10 +1241,15 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
 
   // Header component (shared between empty and filled states)
   const Header = () => (
-    <div style={{
+    <div
+      onDoubleClick={onToggleMaximize}
+      title="Double-click to expand"
+      style={{
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
+      cursor: onToggleMaximize ? 'pointer' : 'default',
+      userSelect: 'none',
       padding: '6px 10px',
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
@@ -1270,6 +1275,24 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
           <line x1="20" y1="20" x2="23" y2="23" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
         </svg>
         <span style={{ color: '#4ade80' }}>Local View</span>
+        {onToggleMaximize && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleMaximize(); }}
+            title={isMaximized ? 'Restore' : 'Expand'}
+            style={{
+              padding: '3px 7px',
+              fontSize: '12px',
+              color: '#9aa0ad',
+              background: 'transparent',
+              border: '1px solid #2a2f3a',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            {isMaximized ? '⤡' : '⤢'}
+          </button>
+        )}
       </h3>
 
       {/* Tabs/Toggle buttons - same line as title */}
