@@ -377,11 +377,19 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
         <h3
           style={{
             margin: 0,
-            fontSize: '18px',
-            color: 'white',
-            fontWeight: 500
+            fontSize: '15px',
+            fontFamily: 'var(--font-display)',
+            color: 'var(--text-1)',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}
         >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(34,211,216,0.5))' }}>
+            <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="#22d3d8" strokeWidth="1.6" fill="rgba(34,211,216,0.12)" />
+            <rect x="11.5" y="11.5" width="9" height="9" rx="1.5" stroke="#22d3d8" strokeWidth="1.6" fill="rgba(34,211,216,0.18)" />
+          </svg>
           Region Selection
         </h3>
         <button
@@ -499,7 +507,7 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 width: '100%',
                 background: isSelected ? '#1a1d29' : '#0f1016',
                 borderRadius: '6px',
-                padding: '10px 12px',
+                padding: '7px 10px',
                 cursor: 'pointer',
                 border: 'none',
                 outline: 'none'
@@ -547,9 +555,9 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 <div
                   style={{
                     color: 'white',
-                    fontSize: '14px',
+                    fontSize: '12.5px',
                     fontWeight: 500,
-                    marginBottom: '4px'
+                    marginBottom: '2px'
                   }}
                 >
                   {region.title}
@@ -557,8 +565,8 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 <div
                   style={{
                     color: '#b9bed0',
-                    fontSize: '12px',
-                    lineHeight: 1.4
+                    fontSize: '10.5px',
+                    lineHeight: 1.35
                   }}
                 >
                   ({region.markers.join(', ')})
@@ -584,7 +592,7 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 width: '100%',
                 background: isSelected ? '#1a1d29' : '#0f1016',
                 borderRadius: '6px',
-                padding: '10px 12px',
+                padding: '7px 10px',
                 cursor: 'pointer',
                 border: 'none',
                 outline: 'none'
@@ -632,9 +640,9 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 <div
                   style={{
                     color: 'white',
-                    fontSize: '14px',
+                    fontSize: '12.5px',
                     fontWeight: 500,
-                    marginBottom: '4px'
+                    marginBottom: '2px'
                   }}
                 >
                   {combination.title}
@@ -642,8 +650,8 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 <div
                   style={{
                     color: '#b9bed0',
-                    fontSize: '12px',
-                    lineHeight: 1.4
+                    fontSize: '10.5px',
+                    lineHeight: 1.35
                   }}
                 >
                   {combination.description}
@@ -669,7 +677,7 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 width: '100%',
                 background: isSelected ? '#1a1d29' : '#0f1016',
                 borderRadius: '6px',
-                padding: '10px 12px',
+                padding: '7px 10px',
                 cursor: 'pointer',
                 border: 'none',
                 outline: 'none'
@@ -717,9 +725,9 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 <div
                   style={{
                     color: 'white',
-                    fontSize: '14px',
+                    fontSize: '12.5px',
                     fontWeight: 500,
-                    marginBottom: '4px'
+                    marginBottom: '2px'
                   }}
                 >
                   {combination.title}
@@ -727,8 +735,8 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
                 <div
                   style={{
                     color: '#b9bed0',
-                    fontSize: '12px',
-                    lineHeight: 1.4
+                    fontSize: '10.5px',
+                    lineHeight: 1.35
                   }}
                 >
                   {combination.description}
