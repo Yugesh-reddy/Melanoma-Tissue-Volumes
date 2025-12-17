@@ -130,3 +130,6 @@ Implemented development updates and optimizations.
 ### [2025-12-17 12:25:31] - Doc: describe viewport projection math in comments
 Implemented development updates and optimizations.
 
+### [2025-12-17 12:32:09] - Feature: enhance Local_View overlay rendering and performance
+Implemented development updates and optimizations.
+
