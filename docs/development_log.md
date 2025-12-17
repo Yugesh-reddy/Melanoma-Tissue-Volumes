@@ -97,3 +97,6 @@ Implemented development updates and optimizations.
 ### [2025-12-15 21:36:40] - Fix: resolve channel selection update latency
 Implemented development updates and optimizations.
 
+### [2025-12-16 19:04:02] - Doc: add documentation for channel select events
+Implemented development updates and optimizations.
+
