@@ -144,13 +144,16 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
         return;
       }
 
-      const ranges = { ...channelRanges };
+      // Identify channels that need range loading
+      const channelsToLoad = channels.filter(c => !channelRanges[c.channelIndex]);
+      if (channelsToLoad.length === 0) return;
+
+      const newRanges = {};
       let changed = false;
 
-      for (const channel of channels) {
+      // Create promises for parallel loading
+      const loadPromises = channelsToLoad.map(async (channel) => {
         const channelIndex = channel.channelIndex;
-        if (ranges[channelIndex]) continue;
-
         const paths = [
           `./visualization_data/channel_${channelIndex}_napari_metadata.json`,
           `visualization_data/channel_${channelIndex}_napari_metadata.json`,
@@ -158,15 +161,14 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
           `visualization_data/channel_${channelIndex}_metadata.json`
         ];
 
+        let range = null;
         for (const path of paths) {
           try {
             const response = await fetch(path);
             if (response.ok) {
               const metadata = await response.json();
-              const dataRange = metadata.dataRange || [0, 65535];
-              ranges[channelIndex] = dataRange;
-              console.log(`Channel ${channelIndex}: Data range [${dataRange[0]}, ${dataRange[1]}]`);
-              changed = true;
+              range = metadata.dataRange || [0, 65535];
+              console.log(`Channel ${channelIndex}: Data range [${range[0]}, ${range[1]}]`);
               break;
             }
           } catch (error) {
@@ -174,18 +176,30 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
           }
         }
 
-        if (!ranges[channelIndex]) {
-          ranges[channelIndex] = [0, 65535];
-          changed = true;
+        if (!range) {
+          range = [0, 65535];
           console.log(`Channel ${channelIndex}: Using default data range [0, 65535]`);
         }
-      }
+        return { channelIndex, range };
+      });
 
-      if (changed && !cancelled) {
-        setChannelRanges(ranges);
+      // Wait for all to complete
+      const results = await Promise.all(loadPromises);
+
+      if (cancelled) return;
+
+      results.forEach(({ channelIndex, range }) => {
+        newRanges[channelIndex] = range;
+        changed = true;
+      });
+
+      if (changed) {
+        setChannelRanges(prev => ({ ...prev, ...newRanges }));
         setChannels((prev) =>
           prev.map((channel) => {
-            const range = ranges[channel.channelIndex] || [0, 65535];
+            // Use new range if available, otherwise fallback to existing or default
+            const range = newRanges[channel.channelIndex] || channelRanges[channel.channelIndex] || [0, 65535];
+
             if (
               channel.dataRange &&
               channel.dataRange[0] === range[0] &&
@@ -482,7 +496,15 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
         paddingBottom: '12px',
         borderBottom: '1px solid #444'
       }}>
-        <h3 style={{ margin: 0, fontSize: '16px', color: 'white', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h3 style={{ margin: 0, fontSize: '15px', fontFamily: 'var(--font-display)', color: 'var(--text-1)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(59,130,246,0.5))' }}>
+            <line x1="5" y1="6" x2="19" y2="6" stroke="#3b82f6" strokeWidth="1.6" strokeLinecap="round" />
+            <line x1="5" y1="12" x2="19" y2="12" stroke="#3b82f6" strokeWidth="1.6" strokeLinecap="round" />
+            <line x1="5" y1="18" x2="19" y2="18" stroke="#3b82f6" strokeWidth="1.6" strokeLinecap="round" />
+            <circle cx="9" cy="6" r="2.4" fill="#0a0b0e" stroke="#3b82f6" strokeWidth="1.6" />
+            <circle cx="15" cy="12" r="2.4" fill="#0a0b0e" stroke="#3b82f6" strokeWidth="1.6" />
+            <circle cx="8" cy="18" r="2.4" fill="#0a0b0e" stroke="#3b82f6" strokeWidth="1.6" />
+          </svg>
           Channel Selection
           {/* Help Button */}
           <button
@@ -643,19 +665,19 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                 title="Click to change color"
               >
                 {/* Paint brush/edit icon overlay */}
-                <svg 
-                  width="14" 
-                  height="14" 
-                  viewBox="0 0 16 16" 
-                  fill="none" 
-                  style={{ 
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  style={{
                     filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))',
                     pointerEvents: 'none'
                   }}
                 >
-                  <path 
-                    d="M13.5 2.5L11 5L11.5 5.5L14 3L13.5 2.5Z M10.5 5.5L3 13V14H4L11.5 6.5L10.5 5.5Z M2 12L3 14L4.5 12.5L3.5 11.5L2 12Z" 
-                    fill="white" 
+                  <path
+                    d="M13.5 2.5L11 5L11.5 5.5L14 3L13.5 2.5Z M10.5 5.5L3 13V14H4L11.5 6.5L10.5 5.5Z M2 12L3 14L4.5 12.5L3.5 11.5L2 12Z"
+                    fill="white"
                     stroke="rgba(0,0,0,0.5)"
                     strokeWidth="0.5"
                   />
