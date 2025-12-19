@@ -151,3 +151,6 @@ Implemented development updates and optimizations.
 ### [2025-12-19 16:22:48] - Refactor: restructure control grid arrangement
 Implemented development updates and optimizations.
 
+### [2025-12-19 17:52:21] - Style: apply glassmorphism backgrounds to side panels
+Implemented development updates and optimizations.
+
