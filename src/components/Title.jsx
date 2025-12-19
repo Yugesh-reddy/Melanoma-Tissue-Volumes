@@ -4,69 +4,66 @@ const Title = ({ softwareName = "Software Name (title)" }) => {
   const [showAbout, setShowAbout] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
+  const navBtn = {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    padding: '6px 14px',
+    backgroundColor: 'transparent',
+    color: 'var(--text-2)',
+    border: '1px solid var(--border)',
+    borderRadius: '7px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 500,
+    fontFamily: 'var(--font-body)',
+    transition: 'border-color 0.2s, color 0.2s, background 0.2s'
+  };
+
   return (
     <>
       <div style={{
         flex: '5%',
         width: '100%',
-        backgroundColor: '#000000',
-        color: 'white',
+        backgroundColor: 'var(--bg-0)',
+        color: 'var(--text-1)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '24px',
-        fontWeight: 'bold',
-        borderBottom: '2px solid #34495e',
+        gap: '11px',
+        borderBottom: '1px solid var(--border)',
         position: 'relative'
       }}>
-        {softwareName}
-        
+        <span style={{
+          width: '8px', height: '8px', borderRadius: '50%',
+          background: 'var(--accent)', boxShadow: '0 0 10px var(--accent)'
+        }} />
+        <span style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: '21px',
+          fontWeight: 700,
+          letterSpacing: '-0.01em',
+          color: 'var(--text-1)'
+        }}>
+          {softwareName}
+        </span>
+
         {/* Help Button - Left of About */}
         <button
           onClick={() => setShowHelp(true)}
-          style={{
-            position: 'absolute',
-            right: '100px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            padding: '8px 16px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-            transition: 'background-color 0.2s'
-          }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = '#45a049'}
-          onMouseLeave={(e) => e.target.style.backgroundColor = '#4CAF50'}
+          style={{ ...navBtn, right: '102px' }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
         >
           Help
         </button>
-        
+
         {/* About Button - Top Right */}
         <button
           onClick={() => setShowAbout(true)}
-          style={{
-            position: 'absolute',
-            right: '20px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            padding: '8px 16px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-            transition: 'background-color 0.2s'
-          }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = '#45a049'}
-          onMouseLeave={(e) => e.target.style.backgroundColor = '#4CAF50'}
+          style={{ ...navBtn, right: '20px' }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
         >
           About
         </button>
@@ -331,15 +328,18 @@ const Title = ({ softwareName = "Software Name (title)" }) => {
               </div>
 
               <div style={{ marginBottom: '0' }}>
-                <h3 style={{ 
-                  color: '#4CAF50', 
+                <h3 style={{
+                  color: '#4CAF50',
                   marginBottom: '10px',
                   fontSize: '20px'
                 }}>
-                  Direction View
+                  Tissue Intelligence
                 </h3>
                 <p style={{ margin: '0', textAlign: 'justify' }}>
-                  Spatial orientation and directional analysis of biomarker distributions. Visualize how biomarkers are distributed across different spatial directions in the tissue sample.
+                  Grounded AI analysis of a selected box. A deterministic engine scores candidate cell populations,
+                  classifies the tumor microenvironment (immune-hot / intermediate / cold), and flags
+                  checkpoint and proliferation signals from the marker statistics. Add a Google Gemini API key to
+                  also stream a written biological interpretation. Research support only — interpretations require expert validation.
                 </p>
               </div>
             </div>
