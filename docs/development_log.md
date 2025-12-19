@@ -139,3 +139,6 @@ Implemented development updates and optimizations.
 ### [2025-12-19 12:33:37] - Style: introduce gradient title background for premium look
 Implemented development updates and optimizations.
 
+### [2025-12-19 13:21:57] - Feature: add sub-header showing project statistics dynamically
+Implemented development updates and optimizations.
+
