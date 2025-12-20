@@ -154,3 +154,6 @@ Implemented development updates and optimizations.
 ### [2025-12-19 17:52:21] - Style: apply glassmorphism backgrounds to side panels
 Implemented development updates and optimizations.
 
+### [2025-12-20 15:22:23] - Feature: integrate Local_View and Graph_Pannel in Main_View
+Implemented development updates and optimizations.
+
