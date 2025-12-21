@@ -133,12 +133,12 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
   // When selections are removed from Local View, remove corresponding wireframes here
   useEffect(() => {
     if (!sceneRef.current) return;
-    
+
     const currentWireframeCount = cuboidWireframesRef.current.length;
     const selectionCount = selectedRegionsData ? selectedRegionsData.length : 0;
-    
+
     console.log(`Main_View: Syncing wireframes - wireframes: ${currentWireframeCount}, selections: ${selectionCount}`);
-    
+
     // If selections were cleared (reset or clear all)
     if (selectionCount === 0 && currentWireframeCount > 0) {
       console.log('Main_View: All selections cleared, removing all wireframes');
@@ -181,7 +181,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         }
       });
       cuboidWireframesRef.current = cuboidWireframesRef.current.slice(0, selectionCount);
-      
+
       // Update current wireframe ref to last remaining one
       if (cuboidWireframesRef.current.length > 0) {
         cuboidWireframeRef.current = cuboidWireframesRef.current[cuboidWireframesRef.current.length - 1];
@@ -210,6 +210,52 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
   }, [selectionMode]);
 
   const cameraStateRef = useRef({ ...CAMERA_INITIAL_STATE });
+
+  // Orientation gizmo (bottom-left HUD): refs updated directly each frame from
+  // the camera so it never triggers React re-renders or touches the render loop.
+  const gizmoXLineRef = useRef(null);
+  const gizmoYLineRef = useRef(null);
+  const gizmoZLineRef = useRef(null);
+  const gizmoXLabRef = useRef(null);
+  const gizmoYLabRef = useRef(null);
+  const gizmoZLabRef = useRef(null);
+
+  useEffect(() => {
+    let raf;
+    const C = 27; // gizmo center
+    const R = 18; // axis length
+    const tmp = new THREE.Vector3();
+    const axes = [
+      { v: [1, 0, 0], line: gizmoXLineRef, lab: gizmoXLabRef },
+      { v: [0, 1, 0], line: gizmoYLineRef, lab: gizmoYLabRef },
+      { v: [0, 0, 1], line: gizmoZLineRef, lab: gizmoZLabRef }
+    ];
+    const tick = () => {
+      const cam = cameraRef.current;
+      if (cam && cam.quaternion) {
+        const q = cam.quaternion.clone().invert();
+        for (const a of axes) {
+          tmp.set(a.v[0], a.v[1], a.v[2]).applyQuaternion(q);
+          const ex = C + tmp.x * R;
+          const ey = C - tmp.y * R;
+          const op = (tmp.z > 0 ? 1 : 0.4).toString();
+          if (a.line.current) {
+            a.line.current.setAttribute('x2', ex.toFixed(1));
+            a.line.current.setAttribute('y2', ey.toFixed(1));
+            a.line.current.setAttribute('opacity', op);
+          }
+          if (a.lab.current) {
+            a.lab.current.setAttribute('x', (C + tmp.x * (R + 6)).toFixed(1));
+            a.lab.current.setAttribute('y', (C - tmp.y * (R + 6) + 3).toFixed(1));
+            a.lab.current.setAttribute('opacity', op);
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   const getDesiredSampling = useCallback((distance = 3) => {
     if (distance >= 8) return 6;
@@ -487,7 +533,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       });
       cuboidWireframesRef.current = [];
     }
-    
+
     // Also remove single wireframe reference if it exists separately
     if (cuboidWireframeRef.current && sceneRef.current) {
       try {
@@ -505,7 +551,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       }
       cuboidWireframeRef.current = null;
     }
-    
+
     // Clear all selection state
     cuboidRef.current = null;
     currentSelectionBoundsRef.current = null;
@@ -515,40 +561,40 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     setIsSelecting(false);
     setSelectionStart(null);
     setSelectionEnd(null);
-    
+
     // Notify parent that selection is cleared
     if (onSelectionChange) {
       onSelectionChange(null);
     }
-    
+
     console.log('Main_View: All selections cleared');
   }, [onSelectionChange]);
 
   // Reset camera to initial state AND clear selection
   const resetCameraView = useCallback(() => {
     // Reset camera state
-    cameraStateRef.current = { 
+    cameraStateRef.current = {
       rotation: { x: 0, y: Math.PI },
       distance: 0.75,
       panOffset: { x: 0, y: 0, z: 0 }
     };
-    
+
     // Clear the selection
     clearSelection();
-    
+
     // Update camera position
     if (cameraRef.current) {
       // Update camera position to show default view
       updateCameraPosition();
-      
+
       // Force LOD update to show data at appropriate quality for default view
       lodStateRef.current.lastUpdate = 0; // Reset LOD cooldown to force update
       updateChannelLOD();
     }
-    
+
     // Force render
     renderScene();
-    
+
     console.log('Main_View: Camera AND selection reset to initial state');
   }, [updateCameraPosition, updateChannelLOD, renderScene, clearSelection]);
 
@@ -757,34 +803,34 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       const halfX = safeSizeX / 2;
       const halfY = safeSizeY / 2;
       const halfZ = safeSizeZ / 2;
-      
+
       // Define the 12 edges of a box as line segments
       const boxEdgePositions = [
         // Bottom face edges
-        -halfX, -halfY, -halfZ,  halfX, -halfY, -halfZ,
-         halfX, -halfY, -halfZ,  halfX,  halfY, -halfZ,
-         halfX,  halfY, -halfZ, -halfX,  halfY, -halfZ,
-        -halfX,  halfY, -halfZ, -halfX, -halfY, -halfZ,
+        -halfX, -halfY, -halfZ, halfX, -halfY, -halfZ,
+        halfX, -halfY, -halfZ, halfX, halfY, -halfZ,
+        halfX, halfY, -halfZ, -halfX, halfY, -halfZ,
+        -halfX, halfY, -halfZ, -halfX, -halfY, -halfZ,
         // Top face edges
-        -halfX, -halfY,  halfZ,  halfX, -halfY,  halfZ,
-         halfX, -halfY,  halfZ,  halfX,  halfY,  halfZ,
-         halfX,  halfY,  halfZ, -halfX,  halfY,  halfZ,
-        -halfX,  halfY,  halfZ, -halfX, -halfY,  halfZ,
+        -halfX, -halfY, halfZ, halfX, -halfY, halfZ,
+        halfX, -halfY, halfZ, halfX, halfY, halfZ,
+        halfX, halfY, halfZ, -halfX, halfY, halfZ,
+        -halfX, halfY, halfZ, -halfX, -halfY, halfZ,
         // Vertical edges connecting top and bottom
-        -halfX, -halfY, -halfZ, -halfX, -halfY,  halfZ,
-         halfX, -halfY, -halfZ,  halfX, -halfY,  halfZ,
-         halfX,  halfY, -halfZ,  halfX,  halfY,  halfZ,
-        -halfX,  halfY, -halfZ, -halfX,  halfY,  halfZ
+        -halfX, -halfY, -halfZ, -halfX, -halfY, halfZ,
+        halfX, -halfY, -halfZ, halfX, -halfY, halfZ,
+        halfX, halfY, -halfZ, halfX, halfY, halfZ,
+        -halfX, halfY, -halfZ, -halfX, halfY, halfZ
       ];
-      
+
       // Create a group to hold all edge lines
       const wireframe = new THREE.Group();
       wireframe.userData.color = wireframeColor;
       wireframe.renderOrder = 999;
-      
+
       // Parse color to get RGB values
       const color = new THREE.Color(wireframeColor);
-      
+
       // Create each edge as a thick Line2
       for (let i = 0; i < boxEdgePositions.length; i += 6) {
         const lineGeometry = new LineGeometry();
@@ -792,13 +838,13 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           boxEdgePositions[i], boxEdgePositions[i + 1], boxEdgePositions[i + 2],
           boxEdgePositions[i + 3], boxEdgePositions[i + 4], boxEdgePositions[i + 5]
         ]);
-        
+
         // Get renderer size for LineMaterial resolution
         const renderer = rendererRef.current;
-        const resolution = renderer 
+        const resolution = renderer
           ? new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight)
           : new THREE.Vector2(window.innerWidth, window.innerHeight);
-        
+
         const lineMaterial = new LineMaterial({
           color: color.getHex(),
           linewidth: isTemporary ? 2 : 3, // Pixel width - thinner but visible
@@ -808,7 +854,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           depthWrite: false,
           resolution: resolution
         });
-        
+
         const line = new Line2(lineGeometry, lineMaterial);
         line.computeLineDistances();
         line.renderOrder = 999;
@@ -834,7 +880,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       }
 
       sceneRef.current.add(wireframe);
-      
+
       // If not temporary, add to array (keep all boxes visible)
       if (!isTemporary) {
         cuboidWireframesRef.current.push(wireframe);
@@ -1012,10 +1058,10 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         // Get the color from the last added wireframe (for consistency across components)
         const lastWireframe = cuboidWireframesRef.current[cuboidWireframesRef.current.length - 1];
         const wireframeColor = lastWireframe?.userData?.color || getSelectionColor(cuboidWireframesRef.current.length - 1);
-        
+
         // Include wireframe color in selection data for consistency
         selectedData.color = wireframeColor;
-        
+
         console.log('Main_View: ✓ Extracted selected region data:', selectedData);
         console.log('Main_View: Voxel bounds:', selectedData.bounds);
         console.log('Main_View: Channels count:', selectedData.channels.length);
@@ -1114,12 +1160,12 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     const wireframesToRemove = [];
     wireframes.forEach((wireframe, index) => {
       if (!wireframe || wireframe.userData.isTemporary) return;
-      
+
       const wireframeWorldBounds = wireframe.userData.worldBounds;
       if (!wireframeWorldBounds) return;
 
       // Check if this wireframe's worldBounds matches any active region
-      const isActive = activeWorldBounds.some(activeWB => 
+      const isActive = activeWorldBounds.some(activeWB =>
         worldBoundsMatch(wireframeWorldBounds, activeWB)
       );
 
@@ -1338,49 +1384,52 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
     };
 
     const handleMouseMove = (e) => {
-      try {
-        if (selectionModeRef.current && selectionStartPos) {
-          // Update 3D cuboid selection box
-          setSelectionEnd({ x: e.clientX, y: e.clientY });
+      // Use requestAnimationFrame to throttle heavy updates
+      requestAnimationFrame(() => {
+        try {
+          if (selectionModeRef.current && selectionStartPos) {
+            // Update 3D cuboid selection box
+            setSelectionEnd({ x: e.clientX, y: e.clientY });
 
-          // Update wireframe in real-time
-          const worldBounds = getWorldBoundsFromSelection(
-            selectionStartPos.x,
-            selectionStartPos.y,
-            e.clientX,
-            e.clientY,
-            currentCuboidDepth
-          );
+            // Update wireframe in real-time
+            const worldBounds = getWorldBoundsFromSelection(
+              selectionStartPos.x,
+              selectionStartPos.y,
+              e.clientX,
+              e.clientY,
+              currentCuboidDepth
+            );
 
-          if (worldBounds) {
-            try {
-              // Update temporary wireframe during selection (will be replaced on completion)
-              updateCuboidWireframe(worldBounds, true);
-              setCuboidCenter(worldBounds.center);
-              setCuboidSize(worldBounds.size);
-            } catch (err) {
-              console.error('Main_View: Error updating wireframe:', err);
+            if (worldBounds) {
+              try {
+                // Update temporary wireframe during selection (will be replaced on completion)
+                updateCuboidWireframe(worldBounds, true);
+                setCuboidCenter(worldBounds.center);
+                setCuboidSize(worldBounds.size);
+              } catch (err) {
+                console.error('Main_View: Error updating wireframe:', err);
+              }
+            }
+          } else {
+            const state = cameraStateRef.current;
+            if (isRotating) {
+              state.rotation.y += (e.clientX - mouseX) * 0.01;
+              state.rotation.x = clamp(state.rotation.x + (e.clientY - mouseY) * 0.01, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
+              updateCameraPosition();
+              updateChannelLOD();
+            }
+            if (isPanning) {
+              state.panOffset.x += (e.clientX - mouseX) * 0.001;
+              state.panOffset.y -= (e.clientY - mouseY) * 0.001;
+              updateCameraPosition();
             }
           }
-        } else {
-          const state = cameraStateRef.current;
-          if (isRotating) {
-            state.rotation.y += (e.clientX - mouseX) * 0.01;
-            state.rotation.x = clamp(state.rotation.x + (e.clientY - mouseY) * 0.01, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
-            updateCameraPosition();
-            updateChannelLOD();
-          }
-          if (isPanning) {
-            state.panOffset.x += (e.clientX - mouseX) * 0.001;
-            state.panOffset.y -= (e.clientY - mouseY) * 0.001;
-            updateCameraPosition();
-          }
+          mouseX = e.clientX;
+          mouseY = e.clientY;
+        } catch (err) {
+          console.error('Main_View: Error in handleMouseMove:', err);
         }
-        mouseX = e.clientX;
-        mouseY = e.clientY;
-      } catch (err) {
-        console.error('Main_View: Error in handleMouseMove:', err);
-      }
+      });
     };
 
     const handleWheel = (e) => {
@@ -1418,52 +1467,52 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           const state = cameraStateRef.current;
           const camera = cameraRef.current;
           const renderer = rendererRef.current;
-          
+
           if (camera && renderer) {
             const rect = renderer.domElement.getBoundingClientRect();
-            
+
             // Get mouse position in NDC (-1 to 1)
             const mouseNDC = new THREE.Vector2(
               ((e.clientX - rect.left) / rect.width) * 2 - 1,
               -((e.clientY - rect.top) / rect.height) * 2 + 1
             );
-            
+
             // Create a ray from camera through mouse position
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(mouseNDC, camera);
-            
+
             // Find intersection point with a plane at the current lookAt distance
             const lookAtPoint = new THREE.Vector3(
               state.panOffset.x,
               state.panOffset.y,
               state.panOffset.z
             );
-            
+
             // Create plane perpendicular to camera direction at lookAt point
             const cameraDirection = new THREE.Vector3();
             camera.getWorldDirection(cameraDirection);
             const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(cameraDirection, lookAtPoint);
-            
+
             // Get the 3D point under the mouse before zoom
             const pointBeforeZoom = new THREE.Vector3();
             raycaster.ray.intersectPlane(plane, pointBeforeZoom);
-            
+
             // Apply zoom
             const zoomFactor = 1 + e.deltaY * 0.001;
             const oldDistance = state.distance;
             state.distance *= zoomFactor;
             state.distance = clamp(state.distance, 0.1, 20);
-            
+
             // Calculate how much the point would shift after zoom
             // and adjust panOffset to keep the point under the cursor
             if (pointBeforeZoom) {
               const zoomRatio = state.distance / oldDistance;
-              
+
               // Calculate the offset from lookAt to the mouse point
               const offsetX = pointBeforeZoom.x - state.panOffset.x;
               const offsetY = pointBeforeZoom.y - state.panOffset.y;
               const offsetZ = pointBeforeZoom.z - state.panOffset.z;
-              
+
               // Move the pan offset toward the mouse point based on zoom change
               const panAdjust = 1 - zoomRatio;
               state.panOffset.x += offsetX * panAdjust * 0.5;
@@ -1476,7 +1525,7 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
             state.distance *= zoomFactor;
             state.distance = clamp(state.distance, 0.1, 20);
           }
-          
+
           updateCameraPosition();
           updateChannelLOD();
         }
@@ -1766,7 +1815,8 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           console.error(`Main_View:  Error loading channel ${channelConfig.channelIndex}:`, error);
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Yield to main thread to allow UI updates and prevent freezing
+        await new Promise(resolve => requestAnimationFrame(resolve));
       }
 
       const visibleCount = visibleChannels.filter((cfg) => {
@@ -1861,6 +1911,31 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         overflow: 'hidden'
       }} />
 
+      {/* Orientation gizmo - bottom left (axis directions track the camera) */}
+      <div style={{
+        position: 'absolute',
+        left: '14px',
+        bottom: '14px',
+        width: '54px',
+        height: '54px',
+        borderRadius: '50%',
+        background: 'rgba(8,9,12,0.55)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        backdropFilter: 'blur(3px)',
+        pointerEvents: 'none',
+        zIndex: 5
+      }}>
+        <svg width="54" height="54" viewBox="0 0 54 54">
+          <circle cx="27" cy="27" r="1.6" fill="#6b7280" />
+          <line ref={gizmoZLineRef} x1="27" y1="27" x2="45" y2="27" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
+          <line ref={gizmoYLineRef} x1="27" y1="27" x2="27" y2="9" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" />
+          <line ref={gizmoXLineRef} x1="27" y1="27" x2="45" y2="27" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+          <text ref={gizmoXLabRef} x="49" y="30" fill="#ef4444" fontSize="9" fontFamily="var(--font-mono)" textAnchor="middle">X</text>
+          <text ref={gizmoYLabRef} x="27" y="6" fill="#22c55e" fontSize="9" fontFamily="var(--font-mono)" textAnchor="middle">Y</text>
+          <text ref={gizmoZLabRef} x="49" y="30" fill="#3b82f6" fontSize="9" fontFamily="var(--font-mono)" textAnchor="middle">Z</text>
+        </svg>
+      </div>
+
       {/* Selection Mode Toggle Button - Top Right */}
       <button
         onClick={(e) => {
@@ -1891,12 +1966,12 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
                       wireframe.visible = newMode;
                     }
                   });
-                  
+
                   // Also handle single wireframe ref
                   if (cuboidWireframeRef.current) {
                     cuboidWireframeRef.current.visible = newMode;
                   }
-                  
+
                   console.log(`Main_View: Wireframes visibility set to ${newMode}`);
                 } catch (err) {
                   console.error('Main_View: Error toggling wireframe visibility:', err);
@@ -1988,9 +2063,9 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           boxShadow: '0 4px 20px rgba(0,0,0,0.5), 0 0 20px rgba(74, 222, 128, 0.1)',
           lineHeight: '1.6'
         }}>
-          <div style={{ 
-            fontWeight: 'bold', 
-            marginBottom: '10px', 
+          <div style={{
+            fontWeight: 'bold',
+            marginBottom: '10px',
             fontSize: '15px',
             color: '#4ade80',
             display: 'flex',
