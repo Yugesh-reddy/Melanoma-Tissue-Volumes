@@ -163,3 +163,6 @@ Implemented development updates and optimizations.
 ### [2025-12-20 19:38:32] - Feature: complete Main_View layout and integration of controls
 Implemented development updates and optimizations.
 
+### [2025-12-23 15:14:44] - Refactor: optimize layout variables in Graph_Pannel
+Implemented development updates and optimizations.
+
