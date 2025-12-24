@@ -172,3 +172,6 @@ Implemented development updates and optimizations.
 ### [2025-12-23 19:36:49] - Feature: implement violin plot visualization wrapper
 Implemented development updates and optimizations.
 
+### [2025-12-23 20:03:13] - Fix: fix data bounds calculation under extreme values
+Implemented development updates and optimizations.
+
