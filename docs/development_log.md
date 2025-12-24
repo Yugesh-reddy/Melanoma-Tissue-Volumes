@@ -178,3 +178,6 @@ Implemented development updates and optimizations.
 ### [2025-12-23 20:04:54] - Feature: restructure Graph_Pannel code and performance logic
 Implemented development updates and optimizations.
 
+### [2025-12-23 20:12:30] - Refactor: clean up old unused chart options
+Implemented development updates and optimizations.
+
