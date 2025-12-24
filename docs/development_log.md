@@ -196,3 +196,6 @@ Implemented development updates and optimizations.
 ### [2025-12-23 21:48:15] - Refactor: simplify App state management
 Implemented development updates and optimizations.
 
+### [2025-12-24 13:04:56] - Feature: add context provider for tissue datasets
+Implemented development updates and optimizations.
+
