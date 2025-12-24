@@ -181,3 +181,6 @@ Implemented development updates and optimizations.
 ### [2025-12-23 20:12:30] - Refactor: clean up old unused chart options
 Implemented development updates and optimizations.
 
+### [2025-12-23 20:26:38] - Feature: add interactive hover details to violin plot markers
+Implemented development updates and optimizations.
+
