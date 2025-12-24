@@ -6,6 +6,7 @@ import Main_View from './components/Main_View';
 import Local_View from './components/Local_View';
 import Graph_Pannel from './components/Graph_Pannel';
 import Direction_view from './components/Direction_view';
+import AI_Analysis from './components/AI_Analysis';
 
 // Helper function to convert RGB to hex
 const rgbToHex = (r, g, b) => {
@@ -32,6 +33,26 @@ const SELECTION_COLORS = [
 // Get color for selection index (cycles through colors)
 const getSelectionColor = (index) => SELECTION_COLORS[index % SELECTION_COLORS.length];
 
+// Bottom-panel wrappers: normal third-width slot, or maximized overlay that
+// covers the whole right section (main view + strip) without remounting.
+const panelStyle = {
+  width: '33.3%',
+  height: '100%',
+  overflow: 'hidden',
+  boxSizing: 'border-box',
+  flexShrink: 0
+};
+const maximizedStyle = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 60,
+  overflow: 'hidden',
+  boxSizing: 'border-box'
+};
+
 function App() {
   const [channels, setChannels] = useState([]);
   const [selectedRegions, setSelectedRegions] = useState([]);
@@ -40,6 +61,15 @@ function App() {
 
   const [selectedRegionsData, setSelectedRegionsData] = useState([]);
   const lastSelectionBoundsRef = useRef(null); // Persist selection bounds across region switches
+
+  // Which bottom panel is maximized over the workspace ('local' | 'graph' | 'ai' | null).
+  // Double-clicking a panel's header toggles it. We reposition the same instance
+  // (no remount) so the 3D contexts in Main/Local View are never torn down.
+  const [maximizedPanel, setMaximizedPanel] = useState(null);
+  const toggleMaximize = useCallback(
+    (id) => setMaximizedPanel((prev) => (prev === id ? null : id)),
+    []
+  );
 
   const handleChannelsChange = useCallback((updatedChannels) => {
     console.log('App: Channels updated:', updatedChannels.length, 'channels');
@@ -203,9 +233,9 @@ function App() {
         boxSizing: 'border-box',
         flexShrink: 0
       }}>
-        {/* Left Sidebar - 100% of main content height, 25% width */}
+        {/* Left Sidebar - 100% of main content height, 21% width */}
         <div style={{
-          width: '25%',
+          width: '21%',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
@@ -242,19 +272,20 @@ function App() {
           </div>
         </div>
 
-        {/* Right Section - 100% of main content height, 75% width */}
+        {/* Right Section - 100% of main content height, 79% width */}
         <div style={{
-          width: '75%',
+          width: '79%',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
           boxSizing: 'border-box',
-          flexShrink: 0
+          flexShrink: 0,
+          position: 'relative' // anchor for the maximized-panel overlay
         }}>
-          {/* Main View - 65% height */}
+          {/* Main View - 60% height (38% goes to the bottom panels) */}
           <div style={{
-            height: '65%',
+            height: '60%',
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
@@ -269,54 +300,46 @@ function App() {
             />
           </div>
 
-          {/* Bottom panels - 35% height */}
+          {/* Bottom panels - 40% height */}
           <div style={{
-            height: '35%',
+            height: '40%',
             width: '100%',
             display: 'flex',
             overflow: 'hidden',
             boxSizing: 'border-box',
             flexShrink: 0
           }}>
-            {/* Local View - 33.3% width */}
-            <div style={{
-              width: '33.3%',
-              height: '100%',
-              overflow: 'hidden',
-              boxSizing: 'border-box',
-              flexShrink: 0
-            }}>
-              <Local_View 
-                selectedRegionsData={selectedRegionsData} 
-                channels={channels} 
+            {/* Local View */}
+            <div style={maximizedPanel === 'local' ? maximizedStyle : panelStyle}>
+              <Local_View
+                selectedRegionsData={selectedRegionsData}
+                channels={channels}
                 onRemoveSelection={handleRemoveSelection}
                 onClearAllSelections={handleClearAllSelections}
+                onToggleMaximize={() => toggleMaximize('local')}
+                isMaximized={maximizedPanel === 'local'}
               />
             </div>
-            {/* Graph Panel - 33.3% width */}
-            <div style={{
-              width: '33.3%',
-              height: '100%',
-              overflow: 'hidden',
-              boxSizing: 'border-box',
-              flexShrink: 0
-            }}>
-              <Graph_Pannel 
-                key={selectedRegionsData.map(r => r.id).join('-') || 'empty'} 
-                selectedRegionsData={selectedRegionsData} 
-                channels={channels} 
-                selectedRegions={selectedRegions} 
+            {/* Graph Panel */}
+            <div style={maximizedPanel === 'graph' ? maximizedStyle : panelStyle}>
+              <Graph_Pannel
+                key={selectedRegionsData.map(r => r.id).join('-') || 'empty'}
+                selectedRegionsData={selectedRegionsData}
+                channels={channels}
+                selectedRegions={selectedRegions}
+                onToggleMaximize={() => toggleMaximize('graph')}
+                isMaximized={maximizedPanel === 'graph'}
               />
             </div>
-            {/* Direction View - 33.3% width */}
-            <div style={{
-              width: '33.3%',
-              height: '100%',
-              overflow: 'hidden',
-              boxSizing: 'border-box',
-              flexShrink: 0
-            }}>
-              <Direction_view channels={channels} />
+            {/* Tissue Intelligence */}
+            <div style={maximizedPanel === 'ai' ? maximizedStyle : panelStyle}>
+              <AI_Analysis
+                selectedRegionsData={selectedRegionsData}
+                channels={channels}
+                selectedRegions={selectedRegions}
+                onToggleMaximize={() => toggleMaximize('ai')}
+                isMaximized={maximizedPanel === 'ai'}
+              />
             </div>
           </div>
         </div>
