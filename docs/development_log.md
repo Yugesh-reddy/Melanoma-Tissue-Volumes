@@ -187,3 +187,6 @@ Implemented development updates and optimizations.
 ### [2025-12-23 20:29:35] - Feature: enable scaling and zooming in graph toolbar
 Implemented development updates and optimizations.
 
+### [2025-12-23 20:35:09] - Fix: fix graph resizing when panel collapses
+Implemented development updates and optimizations.
+
