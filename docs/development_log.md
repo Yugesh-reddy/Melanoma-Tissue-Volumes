@@ -166,3 +166,6 @@ Implemented development updates and optimizations.
 ### [2025-12-23 15:14:44] - Refactor: optimize layout variables in Graph_Pannel
 Implemented development updates and optimizations.
 
+### [2025-12-23 19:25:17] - Style: update chart gridlines and tooltips style
+Implemented development updates and optimizations.
+
