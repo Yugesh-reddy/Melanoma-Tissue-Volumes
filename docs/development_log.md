@@ -169,3 +169,6 @@ Implemented development updates and optimizations.
 ### [2025-12-23 19:25:17] - Style: update chart gridlines and tooltips style
 Implemented development updates and optimizations.
 
+### [2025-12-23 19:36:49] - Feature: implement violin plot visualization wrapper
+Implemented development updates and optimizations.
+
