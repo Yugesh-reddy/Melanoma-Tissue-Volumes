@@ -79,7 +79,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export channels from an OME-Zarr store.")
     parser.add_argument(
         "--store",
-        default=str(Path("BioProject") / "Data" / "biomedvis-6gb" / "0"),
+        default=str(Path("Melanoma-Tissue-Volumes") / "Data" / "biomedvis-6gb" / "0"),
         help="Path to the OME-Zarr group containing resolution levels.",
     )
     parser.add_argument(
@@ -96,7 +96,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default=str(Path("BioProject") / "visualization_data"),
+        default=str(Path("Melanoma-Tissue-Volumes") / "visualization_data"),
         help="Directory for output raw + metadata files.",
     )
     parser.add_argument(
