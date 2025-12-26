@@ -214,3 +214,6 @@ Implemented development updates and optimizations.
 ### [2025-12-25 20:23:03] - Configure: set up build target and environment definitions
 Implemented development updates and optimizations.
 
+### [2025-12-25 20:34:28] - Configure: add proxy rule for local data sources
+Implemented development updates and optimizations.
+
