@@ -4,8 +4,45 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Melanoma Tissue Volumes - Three.js React Test</title>
+    <title>Melanoma Tissue Volumes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      :root {
+        /* Typography */
+        --font-display: 'Sora', sans-serif;
+        --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+        --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+        /* Surfaces */
+        --bg-0: #000000;
+        --bg-1: #0a0b0e;
+        --bg-2: #101218;
+        --bg-3: #161922;
+        --border: #262a35;
+        --border-soft: #1c1f29;
+
+        /* Text */
+        --text-1: #f2f4f8;
+        --text-2: #b6bccb;
+        --text-3: #7d8499;
+
+        /* Accent system — blue = primary action, green = positive/active state */
+        --accent: #3b82f6;
+        --accent-strong: #2563eb;
+        --accent-soft: rgba(59, 130, 246, 0.14);
+        --positive: #22c55e;
+        --positive-soft: rgba(34, 197, 94, 0.14);
+
+        /* TME immunophenotype */
+        --tme-hot: #ef4444;
+        --tme-warm: #f59e0b;
+        --tme-cold: #3b82f6;
+      }
       * {
         margin: 0;
         padding: 0;
@@ -15,13 +52,37 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        font-family: Arial, sans-serif;
-        background-color: #000000;
+        font-family: var(--font-body);
+        background-color: var(--bg-0);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
       }
       #root {
         width: 100vw;
         height: 100vh;
-        background-color: #000000;
+        background-color: var(--bg-0);
+      }
+      /* All numeric / tabular data reads as a precision instrument */
+      .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+      h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.01em; }
+
+      /* Subtle, consistent scrollbars */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 8px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3a404e; }
+      ::-webkit-scrollbar-track { background: transparent; }
+
+      @keyframes mtv-fade-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes mtv-shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+      @keyframes mtv-bar-grow {
+        from { transform: scaleX(0); }
+        to { transform: scaleX(1); }
       }
     </style>
   </head>
