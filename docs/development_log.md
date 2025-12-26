@@ -244,3 +244,6 @@ Implemented development updates and optimizations.
 ### [2025-12-26 11:25:00] - Style: add Google Fonts font-face link tag in index.html
 Implemented development updates and optimizations.
 
+### [2025-12-26 11:27:41] - Fix: remove obsolete style imports from index.html
+Implemented development updates and optimizations.
+
