@@ -22,7 +22,7 @@ The dashboard provides an interactive 3D visualization and analysis platform for
 
 ### Live Demo
 
-🌐 **Online Version**: [https://hosseinfatho.github.io/BioProject/](https://hosseinfatho.github.io/BioProject/)
+🌐 **Online Version**: [https://hosseinfatho.github.io/Melanoma-Tissue-Volumes/](https://hosseinfatho.github.io/Melanoma-Tissue-Volumes/)
 
 ## Technology Stack
 
@@ -112,7 +112,7 @@ src/
 ## Deployment
 
 The project is deployed on GitHub Pages:
-- **Live URL**: [https://hosseinfatho.github.io/BioProject/](https://hosseinfatho.github.io/BioProject/)
+- **Live URL**: [https://hosseinfatho.github.io/Melanoma-Tissue-Volumes/](https://hosseinfatho.github.io/Melanoma-Tissue-Volumes/)
 
 To deploy:
 ```bash

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Utility for inspecting OME-Zarr metadata in the BioProject dataset.
+Utility for inspecting OME-Zarr metadata in the dataset.
 
 Usage:
     python read_ome_zarr_metadata.py [optional_custom_path]
