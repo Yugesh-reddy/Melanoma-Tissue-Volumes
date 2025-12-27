@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "description": "Melanoma Tissue Volumes - Three.js React Test",
   "main": "index.html",
+  "type": "module",
   "scripts": {
     "start": "npx http-server -p 3000 -o",
     "dev": "npx vite",
     "build": "npx vite build",
     "preview": "npx vite preview",
+    "test": "node --test",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
