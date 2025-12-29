@@ -70,6 +70,38 @@ export const extractVoxelsInBounds = (channelData, bounds, thresholdMin, thresho
   };
 };
 
+// Mean of ALL voxels inside `bounds` in normalized 0–255 units (no threshold,
+// no allocation). This must be compared against getChannelBaseline (also over
+// all voxels) so the enrichment z-score is apples-to-apples — using the
+// thresholded mean here instead makes every marker look maxed out.
+export const meanNormInBounds = (channelData, bounds) => {
+  if (!channelData || !bounds) return 0;
+  const { data, metadata } = channelData;
+  const [zSize, ySize, xSize] = metadata.shape;
+
+  const vMinX = Math.max(0, Math.floor(bounds.min.x));
+  const vMaxX = Math.min(xSize - 1, Math.ceil(bounds.max.x));
+  const vMinY = Math.max(0, Math.floor(bounds.min.y));
+  const vMaxY = Math.min(ySize - 1, Math.ceil(bounds.max.y));
+  const vMinZ = Math.max(0, Math.floor(bounds.min.z));
+  const vMaxZ = Math.min(zSize - 1, Math.ceil(bounds.max.z));
+
+  let sum = 0;
+  let count = 0;
+  for (let z = vMinZ; z <= vMaxZ; z++) {
+    for (let y = vMinY; y <= vMaxY; y++) {
+      const rowBase = z * ySize * xSize + y * xSize;
+      for (let x = vMinX; x <= vMaxX; x++) {
+        const idx = rowBase + x;
+        if (idx >= data.length) continue;
+        sum += data[idx];
+        count++;
+      }
+    }
+  }
+  return count > 0 ? sum / count : 0;
+};
+
 // Whole-volume baseline (mean & std of the normalized 0–255 intensities) for a
 // channel, used to express a region's enrichment as a z-score. Computed once per
 // channel from a strided sample (caps work regardless of volume size) and cached.
@@ -166,23 +198,21 @@ export const computeRegionSummary = async ({ region, channels, selectedRegions =
       );
       const stats = calculateStats(voxels);
 
-      // Relative expression: how enriched this marker is in the selected region
-      // versus the whole volume, as a z-score mapped to 0–1. Comparing against
-      // the channel's own baseline (rather than its full possible range) is what
-      // makes markers actually differentiate — otherwise every marker collapses
-      // to a narrow band and phenotype proportions come out artificially equal.
-      const dataRange = channelData.metadata?.dataRange || [0, 65535];
-      const [dataMin, dataMax] = dataRange;
+      // Per-marker normalized abundance in this box, in [0,1]. We scale the
+      // box's mean brightness by the marker's OWN global "high" level
+      // (mean + 2·std), so different antibodies (very different absolute
+      // brightness) become comparable. This is NOT gated at a baseline, so every
+      // box that contains signal yields a usable composition, and because all
+      // markers in a box are diluted equally by any empty space, the *ratios*
+      // between markers (i.e. the composition) are robust to box size/shape.
       const baseline = getChannelBaseline(config.channelIndex, channelData);
-      // Region mean expressed in the same normalized 0–255 units as the baseline.
-      const regionMeanNorm =
-        dataMax > dataMin ? ((stats.mean - dataMin) / (dataMax - dataMin)) * 255 : 0;
-      const z = baseline.std > 1 ? (regionMeanNorm - baseline.mean) / baseline.std : 0;
-      // Logistic map of the enrichment z-score → (0,1). 0.5 = at baseline; it
-      // approaches but never reaches 1, so strongly-enriched markers spread out
-      // instead of all clamping to exactly 1.00 (which looked broken).
-      const relativeExpression = 1 / (1 + Math.exp(-z / 2));
-      const enrichmentZ = z;
+      const regionMeanNorm = meanNormInBounds(channelData, bounds); // 0–255, all voxels
+      const globalHigh = Math.max(8, baseline.mean + 2 * baseline.std);
+      const abundance = Math.max(0, Math.min(1, regionMeanNorm / globalHigh));
+      // Also keep an enrichment z-score (box vs whole-volume mean) for reference.
+      const enrichmentZ = baseline.std > 1 ? (regionMeanNorm - baseline.mean) / baseline.std : 0;
+      // relativeExpression drives the phenotype engine; abundance is the robust signal.
+      const relativeExpression = abundance;
 
       return {
         name: getBiomarkerName(config.channelIndex),
@@ -197,6 +227,7 @@ export const computeRegionSummary = async ({ region, channels, selectedRegions =
         min: stats.min,
         max: stats.max,
         relativeExpression,
+        abundance,
         enrichmentZ
       };
     })
