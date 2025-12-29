@@ -14,43 +14,42 @@
 
 import { MARKER_KB, getMarkerInfo, STRUCTURAL_CATEGORIES } from './markerKnowledgeBase';
 
-// Cell-population rules. `mode: 'all'` requires co-expression of every marker
-// (we take the min, so a missing partner suppresses the call); `mode: 'any'`
-// treats the markers as alternative lineage evidence (we take the max).
+// Cell-population rules. Each phenotype is keyed on the LINEAGE-SPECIFIC
+// marker(s) for that cell type; the score is the strongest of those markers
+// present in the analyzed panel. We deliberately do NOT require co-markers
+// (e.g. CD3E for T cells), because the imaging panel / selected channel groups
+// often don't include them — requiring them would silently zero out whole
+// populations and leave only the tumor showing.
 export const PHENOTYPE_RULES = [
-  { id: 'melanoma',    label: 'Melanoma / tumor cells',        category: 'tumor',    color: '#e0457b', mode: 'any', markers: ['SOX10', 'MART1', 'MITF', 'PMEL', 'S100B', 'PRAME'] },
-  { id: 'cd8_t',       label: 'Cytotoxic T cells (CD8+)',      category: 'immune',   color: '#3b82f6', mode: 'all', markers: ['CD8a', 'CD3E'] },
-  { id: 'cd4_t',       label: 'Helper T cells (CD4+)',         category: 'immune',   color: '#60a5fa', mode: 'all', markers: ['CD4', 'CD3E'] },
-  { id: 'treg',        label: 'Regulatory T cells (Treg)',     category: 'immune',   color: '#8b5cf6', mode: 'all', markers: ['FOXP3', 'CD4'] },
-  { id: 'b_cell',      label: 'B cells',                       category: 'immune',   color: '#22d3ee', mode: 'any', markers: ['CD20'] },
-  { id: 'm2_macro',    label: 'M2 macrophages',                category: 'immune',   color: '#14b8a6', mode: 'any', markers: ['CD163', 'CD206'] },
-  { id: 'dc',          label: 'Dendritic cells',               category: 'immune',   color: '#2dd4bf', mode: 'all', markers: ['CD11c', 'MHC-II'] },
-  { id: 'myeloid',     label: 'Myeloid cells',                 category: 'immune',   color: '#0ea5e9', mode: 'any', markers: ['CD11b', 'LysozymeC'] },
-  { id: 'mast',        label: 'Mast cells',                    category: 'immune',   color: '#a78bfa', mode: 'any', markers: ['Mast cell tryptase'] },
-  { id: 'granulocyte', label: 'Granulocytes',                  category: 'immune',   color: '#38bdf8', mode: 'any', markers: ['CD15'] },
-  { id: 'vasculature', label: 'Vasculature (endothelial)',     category: 'stroma',   color: '#f59e0b', mode: 'any', markers: ['CD31'] },
-  { id: 'lymphatic',   label: 'Lymphatic vessels',             category: 'stroma',   color: '#fbbf24', mode: 'any', markers: ['Podoplanin'] },
-  { id: 'stroma',      label: 'Stroma / ECM',                  category: 'stroma',   color: '#a3a3a3', mode: 'any', markers: ['Collagen (SHG)', 'Vimentin'] },
-  { id: 'epithelial',  label: 'Epithelial / keratinocyte',     category: 'epithelial', color: '#fb923c', mode: 'any', markers: ['pan-cytokeratin', 'E-cadherin'] }
+  { id: 'melanoma',    label: 'Melanoma / tumor cells',        category: 'tumor',      color: '#e0457b', markers: ['SOX10', 'MART1', 'MITF', 'PMEL', 'S100B', 'PRAME'] },
+  { id: 'cd8_t',       label: 'Cytotoxic T cells (CD8+)',      category: 'immune',     color: '#3b82f6', markers: ['CD8a', 'GranzymeB'] },
+  { id: 'cd4_t',       label: 'Helper T cells (CD4+)',         category: 'immune',     color: '#60a5fa', markers: ['CD4'] },
+  { id: 'treg',        label: 'Regulatory T cells (Treg)',     category: 'immune',     color: '#8b5cf6', markers: ['FOXP3'] },
+  { id: 'b_cell',      label: 'B cells',                       category: 'immune',     color: '#22d3ee', markers: ['CD20'] },
+  { id: 'm2_macro',    label: 'M2 macrophages',                category: 'immune',     color: '#14b8a6', markers: ['CD163', 'CD206'] },
+  { id: 'dc',          label: 'Dendritic cells',               category: 'immune',     color: '#2dd4bf', markers: ['CD11c'] },
+  { id: 'myeloid',     label: 'Myeloid cells',                 category: 'immune',     color: '#0ea5e9', markers: ['CD11b', 'LysozymeC'] },
+  { id: 'mast',        label: 'Mast cells',                    category: 'immune',     color: '#a78bfa', markers: ['Mast cell tryptase'] },
+  { id: 'granulocyte', label: 'Granulocytes',                  category: 'immune',     color: '#38bdf8', markers: ['CD15'] },
+  { id: 'vasculature', label: 'Vasculature (endothelial)',     category: 'stroma',     color: '#f59e0b', markers: ['CD31'] },
+  { id: 'lymphatic',   label: 'Lymphatic vessels',             category: 'stroma',     color: '#fbbf24', markers: ['Podoplanin'] },
+  { id: 'stroma',      label: 'Stroma / ECM',                  category: 'stroma',     color: '#a3a3a3', markers: ['Collagen (SHG)', 'Vimentin'] },
+  { id: 'epithelial',  label: 'Epithelial / keratinocyte',     category: 'epithelial', color: '#fb923c', markers: ['pan-cytokeratin', 'E-cadherin'] }
 ];
 
 const CHECKPOINT_MARKERS = ['PDL1', 'PD1', 'LAG3', 'FOXP3'];
 const PROLIFERATION_MARKERS = ['Ki67', 'CyclinD1'];
 
-// Thresholds on relative expression, where 0.5 = whole-volume baseline and
-// values approaching 1 mean the marker is enriched in this region. A phenotype
-// is only "called" when its markers are clearly above baseline. Tunable.
-const PRESENCE_THRESHOLD = 0.55;    // a phenotype below this is treated as absent
-const CHECKPOINT_THRESHOLD = 0.6;
-const TME_HOT = 0.65;
-const TME_WARM = 0.55;
+// relativeExpression is now a per-marker normalized ABUNDANCE in [0,1] (see
+// regionStats). Composition proportions are relative, so we only drop near-zero
+// populations with a low floor; the TME class is derived from the immune *share*
+// of the composition (relative), which needs no absolute calibration. Tunable.
+const PRESENCE_THRESHOLD = 0.04;    // populations below this abundance are dropped
+const CHECKPOINT_THRESHOLD = 0.2;   // checkpoint marker abundance to flag
+const TME_HOT = 0.6;                // immune-vs-tumor balance for "hot" (immune clearly > tumor)
+const TME_WARM = 0.4;               // balance for "intermediate"
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
-
-const combine = (values, mode) => {
-  if (!values.length) return 0;
-  return mode === 'all' ? Math.min(...values) : Math.max(...values);
-};
 
 /**
  * Build a { markerName: relativeExpression } map from a region summary's markers.
@@ -73,7 +72,8 @@ export const scorePhenotypes = (markerMap) => {
   return PHENOTYPE_RULES.map((rule) => {
     const present = rule.markers.filter((m) => markerMap[m] !== undefined);
     const values = present.map((m) => markerMap[m]);
-    const score = combine(values, rule.mode);
+    // Strongest lineage marker present defines the population's abundance.
+    const score = values.length ? Math.max(...values) : 0;
     return {
       ...rule,
       score,
@@ -100,32 +100,37 @@ export const phenotypeProportions = (scored) => {
 };
 
 /**
- * Classify the tumor microenvironment from phenotype scores.
- * NOTE: hot/warm/cold here reflects *infiltration magnitude*. The true
- * hot/excluded/desert distinction requires spatial proximity (Phase 3).
+ * Classify the tumor microenvironment from the composition (proportions).
+ * Uses the immune *share* of the called composition — a relative measure that
+ * needs no absolute calibration and varies meaningfully per box.
+ * NOTE: true hot/excluded/desert distinction needs spatial proximity (Phase 3).
  */
-export const classifyTME = (scored) => {
-  const get = (id) => scored.find((p) => p.id === id)?.score ?? 0;
-  const tumor = get('melanoma');
-  const immuneScores = scored.filter((p) => p.category === 'immune').map((p) => p.score);
-  const immune = immuneScores.length ? Math.max(...immuneScores) : 0;
+export const classifyTME = (phenotypes) => {
+  // Compare the strongest immune population's abundance against the tumor
+  // abundance (not the summed share of many tiny immune populations, which would
+  // wrongly call a tumor-dominant box "hot").
+  const immuneScores = phenotypes.filter((p) => p.category === 'immune').map((p) => p.score);
+  const tumorScores = phenotypes.filter((p) => p.category === 'tumor').map((p) => p.score);
+  const immuneMax = immuneScores.length ? Math.max(...immuneScores) : 0;
+  const tumorMax = tumorScores.length ? Math.max(...tumorScores) : 0;
+  const immuneShare = immuneMax + tumorMax > 0 ? immuneMax / (immuneMax + tumorMax) : 0;
 
   let cls, label, color, description;
-  if (immune >= TME_HOT) {
+  if (immuneShare >= TME_HOT) {
     cls = 'hot';
     label = 'Immune-hot';
     color = '#ef4444';
-    description = 'Strong immune-cell signal — inflamed microenvironment.';
-  } else if (immune >= TME_WARM) {
+    description = 'Immune cells make up a large share of this region — inflamed microenvironment.';
+  } else if (immuneShare >= TME_WARM) {
     cls = 'warm';
     label = 'Immune-intermediate';
     color = '#f59e0b';
-    description = 'Moderate immune signal.';
+    description = 'Moderate immune presence alongside other populations.';
   } else {
     cls = 'cold';
     label = 'Immune-cold';
     color = '#3b82f6';
-    description = 'Little immune signal — immunologically quiet region.';
+    description = 'Few immune cells relative to other populations — immunologically quiet.';
   }
 
   return {
@@ -133,10 +138,9 @@ export const classifyTME = (scored) => {
     label,
     color,
     description,
-    immuneIndex: immune,
-    tumorIndex: tumor,
-    // > 0.5 means immune signal outweighs tumor signal in this region
-    immuneToTumor: immune + tumor > 0 ? immune / (immune + tumor) : 0
+    immuneIndex: immuneMax,
+    tumorIndex: tumorMax,
+    immuneToTumor: immuneShare
   };
 };
 
@@ -158,8 +162,8 @@ export const proliferationSignal = (markerMap) => {
   const values = PROLIFERATION_MARKERS.map((m) => markerMap[m] ?? 0);
   const index = Math.max(0, ...values);
   let level;
-  if (index >= 0.65) level = 'high';
-  else if (index >= 0.55) level = 'moderate';
+  if (index >= 0.3) level = 'high';
+  else if (index >= 0.15) level = 'moderate';
   else level = 'low';
   return { index, level };
 };
@@ -194,7 +198,7 @@ export const runEngine = (summary) => {
   return {
     phenotypes,
     topPhenotypes: phenotypes.filter((p) => p.proportion > 0),
-    tme: classifyTME(scored),
+    tme: classifyTME(phenotypes),
     checkpoint: checkpointSignal(markerMap),
     proliferation: proliferationSignal(markerMap),
     drivers: keyDrivers(markers)
