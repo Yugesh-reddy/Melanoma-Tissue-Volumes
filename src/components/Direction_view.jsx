@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { loadChannelData } from '../hooks/useChannelData';
+import { principalAxis, dominantAxisLabel } from '../services/directionStats';
+import { getBiomarkerName } from '../utils/regionStats';
+import AskTissueButton from './AskTissueButton';
+import { useAgentActions } from '../services/agentActions';
 
 // Load channel data using utility
 // Note: loadChannelData is now imported from hooks/useChannelData
@@ -16,97 +20,7 @@ const hexToRgb = (hex) => {
     : { r: 1, g: 1, b: 1 };
 };
 
-const computePrincipalDirection = (points) => {
-  if (points.length < 2) return null;
-
-  const n = points.length;
-  const mean = new THREE.Vector3();
-  points.forEach((p) => mean.add(p));
-  mean.divideScalar(n);
-
-  const centered = points.map((p) => new THREE.Vector3().subVectors(p, mean));
-
-  let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
-  centered.forEach((p) => {
-    xx += p.x * p.x;
-    xy += p.x * p.y;
-    xz += p.x * p.z;
-    yy += p.y * p.y;
-    yz += p.y * p.z;
-    zz += p.z * p.z;
-  });
-
-  const cov = [
-    [xx, xy, xz],
-    [xy, yy, yz],
-    [xz, yz, zz]
-  ];
-
-  const trace = xx + yy + zz;
-  const det = xx * (yy * zz - yz * yz) - xy * (xy * zz - xz * yz) + xz * (xy * yz - yy * xz);
-  const q = (trace * trace - (xx * xx + yy * yy + zz * zz + 2 * (xy * xy + xz * xz + yz * yz))) / 2;
-
-  if (q <= 0) {
-    const minPoint = new THREE.Vector3(Infinity, Infinity, Infinity);
-    const maxPoint = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-    points.forEach((p) => {
-      minPoint.min(p);
-      maxPoint.max(p);
-    });
-    const direction = new THREE.Vector3().subVectors(maxPoint, minPoint).normalize();
-    return { direction, center: mean };
-  }
-
-  const p = trace;
-  const r = det;
-  const phi = Math.acos(Math.max(-1, Math.min(1, (2 * p * p * p - 9 * p * q + 27 * r) / (2 * Math.pow(p * p - 3 * q, 1.5)))));
-
-  const sqrtTerm = Math.sqrt(p * p - 3 * q);
-  const lambda1 = p / 3 + (2 / 3) * sqrtTerm * Math.cos(phi / 3);
-  const lambda2 = p / 3 + (2 / 3) * sqrtTerm * Math.cos((phi + 2 * Math.PI) / 3);
-  const lambda3 = p / 3 + (2 / 3) * sqrtTerm * Math.cos((phi + 4 * Math.PI) / 3);
-
-  const maxLambda = Math.max(lambda1, lambda2, lambda3);
-
-  let direction = new THREE.Vector3(1, 0, 0);
-
-  if (Math.abs(maxLambda - lambda1) < 0.001) {
-    const denom = (yy - lambda1) * (zz - lambda1) - yz * yz;
-    if (Math.abs(denom) > 1e-6) {
-      const y = (xy * (zz - lambda1) - xz * yz) / denom;
-      const z = (xz - yz * y) / (zz - lambda1);
-      direction = new THREE.Vector3(1, y, z).normalize();
-    }
-  } else if (Math.abs(maxLambda - lambda2) < 0.001) {
-    const denom = (xx - lambda2) * (zz - lambda2) - xz * xz;
-    if (Math.abs(denom) > 1e-6) {
-      const x = (xy * (zz - lambda2) - xz * yz) / denom;
-      const z = (yz - xz * x) / (zz - lambda2);
-      direction = new THREE.Vector3(x, 1, z).normalize();
-    }
-  } else {
-    const denom = (xx - lambda3) * (yy - lambda3) - xy * xy;
-    if (Math.abs(denom) > 1e-6) {
-      const x = (xy * (yy - lambda3) - xz * xy) / denom;
-      const y = (xz - xy * x) / (yy - lambda3);
-      direction = new THREE.Vector3(x, y, 1).normalize();
-    }
-  }
-
-  if (direction.length() < 0.1) {
-    const minPoint = new THREE.Vector3(Infinity, Infinity, Infinity);
-    const maxPoint = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-    points.forEach((p) => {
-      minPoint.min(p);
-      maxPoint.max(p);
-    });
-    direction = new THREE.Vector3().subVectors(maxPoint, minPoint).normalize();
-  }
-
-  return { direction, center: mean };
-};
-
-const Direction_view = ({ channels = [] }) => {
+const Direction_view = ({ channels = [], onToggleMaximize, isMaximized = false }) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -114,7 +28,44 @@ const Direction_view = ({ channels = [] }) => {
   const animationRef = useRef(null);
   const arrowsRef = useRef([]);
   const channelDataCacheRef = useRef(new Map());
+  // Orbit state shared between manual drag/zoom and the agent camera tools, so
+  // an AI-driven setView/reset stays in sync with the next manual interaction.
+  const orbitRef = useRef({ distance: 1.658, rotX: 0.306, rotY: 0.322 });
+  const applyOrbitRef = useRef(null); // set by the scene effect to updateCameraPosition
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, z: 0 });
+  // Per-channel orientation metrics, lifted for the Tissue Intelligence trigger.
+  const [dirStats, setDirStats] = useState([]);
+
+  const { registerActions, unregisterActions } = useAgentActions();
+  useEffect(() => {
+    const applies = (p) => p === 'direction' || p === undefined || p === null;
+    // Write the orbit state and re-render via the scene's updateCameraPosition,
+    // so a subsequent manual drag continues from where the AI left off.
+    const applyOrbit = (orbit) => {
+      orbitRef.current = { ...orbitRef.current, ...orbit };
+      if (applyOrbitRef.current) applyOrbitRef.current();
+    };
+    const reset = ({ panel } = {}) => {
+      if (!applies(panel) || !cameraRef.current) return { message: 'No Direction View camera here.' };
+      applyOrbit({ distance: 1.658, rotX: 0.306, rotY: 0.322 });
+      return { message: 'Reset Direction View camera' };
+    };
+    const setView = ({ panel, orientation } = {}) => {
+      if (!applies(panel) || !cameraRef.current) return { message: 'No Direction View camera here.' };
+      // (rotX, rotY) in the same spherical convention as the orbit controls.
+      const poses = {
+        front: { rotX: 0, rotY: 0 },
+        side: { rotX: 0, rotY: Math.PI / 2 },
+        top: { rotX: 1.55, rotY: 0 }, // just under PI/2 to avoid a degenerate look-down
+        iso: { rotX: Math.PI / 6, rotY: Math.PI / 4 }
+      };
+      const pose = poses[orientation] || poses.iso;
+      applyOrbit({ distance: 1.5, ...pose });
+      return { message: `Direction View: ${orientation || 'iso'} view` };
+    };
+    registerActions({ resetCamera: reset, setView, focusCamera: reset });
+    return () => unregisterActions(['resetCamera', 'setView', 'focusCamera']);
+  }, [registerActions, unregisterActions]);
 
   const disposeArrow = (arrow) => {
     if (!arrow) return;
@@ -206,17 +157,19 @@ const Direction_view = ({ channels = [] }) => {
     let isPanning = false;
     let mouseX = 0;
     let mouseY = 0;
-    let cameraDistance = 1.5;
-    let cameraRotationX = 0;
-    let cameraRotationY = 0;
 
     const updateCameraPosition = () => {
-      const x = cameraDistance * Math.sin(cameraRotationY) * Math.cos(cameraRotationX);
-      const y = cameraDistance * Math.sin(cameraRotationX);
-      const z = cameraDistance * Math.cos(cameraRotationY) * Math.cos(cameraRotationX);
+      const { distance, rotX, rotY } = orbitRef.current;
+      const x = distance * Math.sin(rotY) * Math.cos(rotX);
+      const y = distance * Math.sin(rotX);
+      const z = distance * Math.cos(rotY) * Math.cos(rotX);
       camera.position.set(x, y, z);
       camera.lookAt(0, 0, 0);
     };
+    // Expose to the agent camera tools, and align the initial camera with the
+    // orbit state so the first manual drag doesn't jump.
+    applyOrbitRef.current = updateCameraPosition;
+    updateCameraPosition();
 
     const handleMouseDown = (event) => {
       if (event.button === 0) {
@@ -238,8 +191,9 @@ const Direction_view = ({ channels = [] }) => {
       if (isRotating) {
         const deltaX = (event.clientX - mouseX) * 0.01;
         const deltaY = (event.clientY - mouseY) * 0.01;
-        cameraRotationY += deltaX;
-        cameraRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotationX + deltaY));
+        const o = orbitRef.current;
+        o.rotY += deltaX;
+        o.rotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, o.rotX + deltaY));
         updateCameraPosition();
       }
 
@@ -267,8 +221,8 @@ const Direction_view = ({ channels = [] }) => {
 
     const handleWheel = (event) => {
       event.preventDefault();
-      cameraDistance *= 1 + event.deltaY * 0.001;
-      cameraDistance = Math.max(0.5, Math.min(5, cameraDistance));
+      const o = orbitRef.current;
+      o.distance = Math.max(0.5, Math.min(5, o.distance * (1 + event.deltaY * 0.001)));
       updateCameraPosition();
     };
 
@@ -290,14 +244,21 @@ const Direction_view = ({ channels = [] }) => {
     const handleResize = () => {
       const newWidth = container.clientWidth;
       const newHeight = container.clientHeight;
+      if (newWidth === 0 || newHeight === 0) return;
       camera.aspect = newWidth / newHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(newWidth, newHeight);
+      camera.lookAt(0, 0, 0); // keep arrows centered after a resize (e.g. maximize)
     };
+    // Observe the container (not just the window) so maximizing the panel —
+    // which changes the container size without a window resize — refits the scene.
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
@@ -341,6 +302,8 @@ const Direction_view = ({ channels = [] }) => {
       const visibleChannels = channels.filter(ch => ch.visible !== false);
       console.log(`Direction_view: Processing ${visibleChannels.length} visible channel(s) out of ${channels.length} total`);
       console.log(`Direction_view: Visible channels:`, visibleChannels.map(ch => ({ index: ch.channelIndex, color: ch.color, visible: ch.visible })));
+
+      const collectedStats = []; // per-channel orientation metrics for Tissue Intelligence
 
       for (const channelConfig of visibleChannels) {
         const channelIndex = channelConfig.channelIndex;
@@ -438,7 +401,7 @@ const Direction_view = ({ channels = [] }) => {
             direction = new THREE.Vector3(1, 0, 0).normalize();
             center = new THREE.Vector3(0, 0, 0);
           } else {
-            const principalResult = computePrincipalDirection(highIntensityPointsOriginal);
+            const principalResult = principalAxis(highIntensityPointsOriginal);
             if (!principalResult) {
               console.warn(`Direction_view: Could not compute principal direction for channel ${channelIndex}, using default`);
               direction = new THREE.Vector3(1, 0, 0).normalize();
@@ -456,6 +419,14 @@ const Direction_view = ({ channels = [] }) => {
               const dirY = originalDirection.y * scaleY;
               const dirZ = originalDirection.z * scaleZ;
               direction = new THREE.Vector3(dirX, dirY, dirZ).normalize();
+
+              // Grounding metrics use the raw (unscaled) voxel-space orientation.
+              collectedStats.push({
+                name: getBiomarkerName(channelIndex),
+                direction: originalDirection,
+                coherence: principalResult.coherence,
+                dominantAxis: dominantAxisLabel(originalDirection)
+              });
 
               console.log(`Direction_view: Channel ${channelIndex} - Original direction: (${originalDirection.x.toFixed(3)}, ${originalDirection.y.toFixed(3)}, ${originalDirection.z.toFixed(3)}), Scaled direction: (${direction.x.toFixed(3)}, ${direction.y.toFixed(3)}, ${direction.z.toFixed(3)})`);
             }
@@ -478,6 +449,7 @@ const Direction_view = ({ channels = [] }) => {
       }
 
       console.log(`Direction_view: Created ${arrowsRef.current.length} arrow(s) for ${visibleChannels.length} visible channel(s)`);
+      setDirStats(collectedStats);
 
       if (rendererRef.current && cameraRef.current) {
         rendererRef.current.render(scene, cameraRef.current);
@@ -493,62 +465,76 @@ const Direction_view = ({ channels = [] }) => {
         height: '100%',
         width: '100%',
         backgroundColor: '#000000',
-        border: '1px solid #444',
+        borderTop: '1px solid var(--border)',
+        borderLeft: '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         boxSizing: 'border-box'
       }}
     >
-      {/* Header - Similar to Graph Panel and Local View */}
-      <div style={{
+      {/* Header - matches Graph Panel and Local View */}
+      <div
+        onDoubleClick={onToggleMaximize}
+        title="Double-click to expand"
+        style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        cursor: onToggleMaximize ? 'pointer' : 'default',
+        userSelect: 'none',
         padding: '6px 10px',
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        borderBottom: '1px solid var(--border)',
         flexShrink: 0,
         zIndex: 10
       }}>
         <h3
           style={{
             margin: 0,
-            fontSize: '14px',
-            color: 'white',
-            fontWeight: 500,
+            fontSize: '15px',
+            color: 'var(--text-1)',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: '8px'
           }}
         >
-          {/* Composite Glyph: Compass + Directional arrows */}
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
+          {/* Composite Glyph: Compass + Directional arrows (uniform blue accent) */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(59,130,246,0.5))' }}>
             {/* Compass circle */}
-            <circle cx="12" cy="12" r="10" stroke="#4ade80" strokeWidth="1.5" fill="rgba(74, 222, 128, 0.1)" />
+            <circle cx="12" cy="12" r="10" stroke="#3b82f6" strokeWidth="1.5" fill="rgba(59,130,246,0.12)" />
             {/* Cardinal direction markers */}
             <circle cx="12" cy="3" r="1.5" fill="#fff" />
-            <circle cx="21" cy="12" r="1.5" fill="#4ade80" />
+            <circle cx="21" cy="12" r="1.5" fill="#3b82f6" />
             <circle cx="12" cy="21" r="1.5" fill="#fff" opacity="0.5" />
-            <circle cx="3" cy="12" r="1.5" fill="#4ade80" opacity="0.5" />
+            <circle cx="3" cy="12" r="1.5" fill="#3b82f6" opacity="0.5" />
             {/* Direction arrow */}
-            <path d="M12 7L16 12L12 17L8 12Z" fill="#4ade80" stroke="#fff" strokeWidth="1" />
+            <path d="M12 7L16 12L12 17L8 12Z" fill="#3b82f6" stroke="#fff" strokeWidth="1" />
             <path d="M12 7L12 12" stroke="#fff" strokeWidth="1.5" />
           </svg>
-          <span style={{ color: '#4ade80' }}>Direction View</span>
+          <span style={{ color: 'var(--text-1)' }}>Direction View</span>
+          {onToggleMaximize && (
+            <button
+              type="button"
+              className="mtv-press"
+              onClick={(e) => { e.stopPropagation(); onToggleMaximize(); }}
+              title={isMaximized ? 'Restore' : 'Expand'}
+              style={{
+                padding: '3px 7px',
+                fontSize: '12px',
+                color: '#9aa0ad',
+                background: 'transparent',
+                border: '1px solid #2a2f3a',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              {isMaximized ? '⤡' : '⤢'}
+            </button>
+          )}
         </h3>
-        
-        {/* Info text on the right */}
-        <div style={{
-          fontSize: '10px',
-          color: 'rgba(255, 255, 255, 0.5)',
-          fontStyle: 'italic',
-          maxWidth: '180px',
-          textAlign: 'right',
-          lineHeight: '1.3'
-        }}>
-          Arrows show principal direction of high-intensity regions
-        </div>
       </div>
       <div
         ref={mountRef}
@@ -560,6 +546,19 @@ const Direction_view = ({ channels = [] }) => {
           position: 'relative'
         }}
       >
+        {/* Ask AI - floating top-right of the body */}
+        <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 6 }}>
+          <AskTissueButton
+            variant="chip"
+            disabled={dirStats.length === 0}
+            descriptor={{
+              id: 'orientation',
+              kind: 'orientation',
+              title: 'Direction View',
+              resolve: async () => dirStats
+            }}
+          />
+        </div>
         <div
           style={{
             position: 'absolute',
@@ -573,7 +572,7 @@ const Direction_view = ({ channels = [] }) => {
             fontSize: '11px',
             fontFamily: 'monospace',
             pointerEvents: 'none',
-            zIndex: 1000
+            zIndex: 5
           }}
         >
           X: {mousePosition.x} | Y: {mousePosition.y} | Z: {mousePosition.z}
