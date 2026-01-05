@@ -1,354 +1,66 @@
-import React, { useState } from 'react';
+import React from 'react';
 
-const Title = ({ softwareName = "Software Name (title)" }) => {
-  const [showAbout, setShowAbout] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-
+const Title = ({ softwareName = "Software Name (title)", onOpenSettings }) => {
   const navBtn = {
     position: 'absolute',
     top: '50%',
+    right: '20px',
     transform: 'translateY(-50%)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '7px',
     padding: '6px 14px',
     backgroundColor: 'transparent',
     color: 'var(--text-2)',
     border: '1px solid var(--border)',
-    borderRadius: '7px',
+    borderRadius: 'var(--radius-sm)',
     cursor: 'pointer',
     fontSize: '13px',
     fontWeight: 500,
     fontFamily: 'var(--font-body)',
-    transition: 'border-color 0.2s, color 0.2s, background 0.2s'
+    transition: 'border-color 160ms var(--ease-out), color 160ms var(--ease-out), background 160ms var(--ease-out)'
   };
 
   return (
-    <>
-      <div style={{
-        flex: '5%',
-        width: '100%',
-        backgroundColor: 'var(--bg-0)',
-        color: 'var(--text-1)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '11px',
-        borderBottom: '1px solid var(--border)',
-        position: 'relative'
+    <div style={{
+      flex: '5%',
+      width: '100%',
+      backgroundColor: 'var(--bg-0)',
+      color: 'var(--text-1)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '11px',
+      borderBottom: '1px solid var(--border)',
+      position: 'relative'
+    }}>
+      <span style={{
+        width: '8px', height: '8px', borderRadius: '50%',
+        background: 'var(--accent)', boxShadow: '0 0 10px var(--accent)'
+      }} />
+      <span style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: '21px',
+        fontWeight: 700,
+        letterSpacing: '-0.01em',
+        color: 'var(--text-1)'
       }}>
-        <span style={{
-          width: '8px', height: '8px', borderRadius: '50%',
-          background: 'var(--accent)', boxShadow: '0 0 10px var(--accent)'
-        }} />
-        <span style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: '21px',
-          fontWeight: 700,
-          letterSpacing: '-0.01em',
-          color: 'var(--text-1)'
-        }}>
-          {softwareName}
-        </span>
+        {softwareName}
+      </span>
 
-        {/* Help Button - Left of About */}
-        <button
-          onClick={() => setShowHelp(true)}
-          style={{ ...navBtn, right: '102px' }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
-        >
-          Help
-        </button>
-
-        {/* About Button - Top Right */}
-        <button
-          onClick={() => setShowAbout(true)}
-          style={{ ...navBtn, right: '20px' }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
-        >
-          About
-        </button>
-      </div>
-
-      {/* About Popup Modal */}
-      {showAbout && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}
-          onClick={(e) => {
-            // Close when clicking outside the modal
-            if (e.target === e.currentTarget) {
-              setShowAbout(false);
-            }
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#1a1a1a',
-              padding: '30px',
-              borderRadius: '8px',
-              maxWidth: '600px',
-              width: '90%',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              border: '2px solid #4CAF50',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-              position: 'relative'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => setShowAbout(false)}
-              style={{
-                position: 'absolute',
-                top: '10px',
-                right: '10px',
-                padding: '6px 12px',
-                backgroundColor: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                transition: 'background-color 0.2s'
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#45a049'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#4CAF50'}
-            >
-              ×
-            </button>
-
-            {/* About Text */}
-            <div style={{
-              color: 'white',
-              fontSize: '18px',
-              lineHeight: '1.6',
-              textAlign: 'justify'
-            }}>
-              This project, completed by{' '}
-              <a
-                href="https://hosseinfatho.github.io/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: '#2196F3',
-                  textDecoration: 'underline',
-                  fontWeight: 'bold'
-                }}
-                onMouseEnter={(e) => e.target.style.color = '#1976D2'}
-                onMouseLeave={(e) => e.target.style.color = '#2196F3'}
-              >
-                Hossein Fathollahian
-              </a>
-              {' '}and{' '}
-              <a
-                href="https://www.linkedin.com/in/yugesh-reddy-sappidi/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: '#2196F3',
-                  textDecoration: 'underline',
-                  fontWeight: 'bold'
-                }}
-                onMouseEnter={(e) => e.target.style.color = '#1976D2'}
-                onMouseLeave={(e) => e.target.style.color = '#2196F3'}
-              >
-                Yugesh Sappidi
-              </a>
-              {' '}for the Visual Data Science graduate course at the University of Illinois Chicago (Fall 2025), was developed in collaboration with{' '}
-              <a
-                href="https://www.rushu.rush.edu/research-rush-university/departmental-research/anatomy-cell-biology-research/laboratory-lei-duan-md"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: '#2196F3',
-                  textDecoration: 'underline',
-                  fontWeight: 'bold'
-                }}
-                onMouseEnter={(e) => e.target.style.color = '#1976D2'}
-                onMouseLeave={(e) => e.target.style.color = '#2196F3'}
-              >
-                Dr. Lei Duan
-              </a>
-              {' '}and Dr. Carl Maki of Rush Medical University. Together, we designed a Microscopy Dashboard to support the investigation of biopsy tissue CyCF microscopic images.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Help Popup Modal */}
-      {showHelp && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}
-          onClick={(e) => {
-            // Close when clicking outside the modal
-            if (e.target === e.currentTarget) {
-              setShowHelp(false);
-            }
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#1a1a1a',
-              padding: '30px',
-              borderRadius: '8px',
-              maxWidth: '700px',
-              width: '90%',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              border: '2px solid #4CAF50',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-              position: 'relative'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => setShowHelp(false)}
-              style={{
-                position: 'absolute',
-                top: '10px',
-                right: '10px',
-                padding: '6px 12px',
-                backgroundColor: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                transition: 'background-color 0.2s'
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#45a049'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#4CAF50'}
-            >
-              ×
-            </button>
-
-            {/* Help Content */}
-            <div style={{
-              color: 'white',
-              fontSize: '18px',
-              lineHeight: '1.8'
-            }}>
-              <h2 style={{ 
-                color: '#4CAF50', 
-                marginTop: '0', 
-                marginBottom: '20px',
-                fontSize: '24px'
-              }}>
-                Component Guide
-              </h2>
-              
-              <div style={{ marginBottom: '25px' }}>
-                <h3 style={{ 
-                  color: '#4CAF50', 
-                  marginBottom: '10px',
-                  fontSize: '20px'
-                }}>
-                  Channel Selection
-                </h3>
-                <p style={{ margin: '0', textAlign: 'justify' }}>
-                  Select and configure multiple biomarker channels to visualize. You can adjust color, opacity, threshold values, and visibility for each channel. Channels can be enabled or disabled to focus on specific biomarkers.
-                </p>
-              </div>
-
-              <div style={{ marginBottom: '25px' }}>
-                <h3 style={{ 
-                  color: '#4CAF50', 
-                  marginBottom: '10px',
-                  fontSize: '20px'
-                }}>
-                  Region Selection
-                </h3>
-                <p style={{ margin: '0', textAlign: 'justify' }}>
-                  Manage and toggle different tissue regions. Select regions to analyze and compare their biomarker expressions. Each region can be individually enabled or disabled for analysis.
-                </p>
-              </div>
-
-              <div style={{ marginBottom: '25px' }}>
-                <h3 style={{ 
-                  color: '#4CAF50', 
-                  marginBottom: '10px',
-                  fontSize: '20px'
-                }}>
-                  Main View
-                </h3>
-                <p style={{ margin: '0', textAlign: 'justify' }}>
-                  Interactive 3D visualization of the entire tissue volume. Use the "3D Selection" button to draw selection boxes for analysis. Rotate (left-click + drag), pan (right-click + drag), and zoom (scroll) to explore the data. Each selection box is color-coded and can be used to extract data for detailed analysis.
-                </p>
-              </div>
-
-              <div style={{ marginBottom: '25px' }}>
-                <h3 style={{ 
-                  color: '#4CAF50', 
-                  marginBottom: '10px',
-                  fontSize: '20px'
-                }}>
-                  Local View
-                </h3>
-                <p style={{ margin: '0', textAlign: 'justify' }}>
-                  Detailed 3D view of selected tissue regions. Each selection appears as a separate tab. You can rotate, zoom, and pan within each local view to examine the selected region in detail. Use "Reset View" to close the current tab.
-                </p>
-              </div>
-
-              <div style={{ marginBottom: '25px' }}>
-                <h3 style={{ 
-                  color: '#4CAF50', 
-                  marginBottom: '10px',
-                  fontSize: '20px'
-                }}>
-                  Graph Panel
-                </h3>
-                <p style={{ margin: '0', textAlign: 'justify' }}>
-                  Statistical analysis and visualization of selected regions. View bar charts, heatmaps, or violin plots showing cell counts, density, and intensity distributions for each biomarker. Compare multiple selected regions side by side.
-                </p>
-              </div>
-
-              <div style={{ marginBottom: '0' }}>
-                <h3 style={{
-                  color: '#4CAF50',
-                  marginBottom: '10px',
-                  fontSize: '20px'
-                }}>
-                  Tissue Intelligence
-                </h3>
-                <p style={{ margin: '0', textAlign: 'justify' }}>
-                  Grounded AI analysis of a selected box. A deterministic engine scores candidate cell populations,
-                  classifies the tumor microenvironment (immune-hot / intermediate / cold), and flags
-                  checkpoint and proliferation signals from the marker statistics. Add a Google Gemini API key to
-                  also stream a written biological interpretation. Research support only — interpretations require expert validation.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+      {/* Settings — single entry point for AI model configuration */}
+      <button
+        onClick={onOpenSettings}
+        style={navBtn}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
+        title="Configure the AI model provider"
+      >
+        <span style={{ fontSize: '14px', lineHeight: 1 }}>⚙</span>
+        Settings
+      </button>
+    </div>
   );
 };
 
 export default Title;
-
