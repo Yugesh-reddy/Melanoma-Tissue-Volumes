@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import channelNamesData from '../channel_names.json';
+import { useAgentActions } from '../services/agentActions';
+import { findChannelIndex, channelNameAt } from '../services/channelCatalog';
 
 // Generate channel options (0-69 based on data shape)
 const CHANNEL_COUNT = 70;
@@ -12,7 +14,7 @@ const rgbToHex = (r, g, b) => {
   }).join('');
 };
 
-const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion = 0 }) => {
+const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion = 0, agentSetChannels }) => {
   const [channels, setChannels] = useState([]);
   const presetVersionRef = useRef(null);
   const presetChannelsRef = useRef(presetChannels);
@@ -22,6 +24,133 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
     presetChannelsRef.current = presetChannels;
   }, [presetChannels]);
 
+  const { registerActions, unregisterActions, registerState, unregisterState } = useAgentActions();
+  const channelsRef = useRef(channels);
+  useEffect(() => { channelsRef.current = channels; }, [channels]);
+
+  // Expose live channel state for the assistant's system awareness.
+  useEffect(() => {
+    registerState('channels', () => {
+      const cs = channelsRef.current || [];
+      if (cs.length === 0) return 'Channels: none loaded.';
+      const parts = cs.map((c) => {
+        const label = c.markerName || c.name || channelNameAt(c.channelIndex);
+        return `${label}${c.visible === false ? ' (hidden)' : ''}`;
+      });
+      return `Channels in view (${cs.length}): ${parts.join(', ')}.`;
+    });
+    return () => unregisterState('channels');
+  }, [registerState, unregisterState]);
+
+  useEffect(() => {
+    if (!agentSetChannels) return;
+
+    const snapshot = () => channelsRef.current.map((c) => ({ ...c }));
+    const restore = (prev) => agentSetChannels(prev);
+
+    const setVisibility = (markers, visible) => {
+      const prev = snapshot();
+      const wanted = new Set(markers.map((m) => findChannelIndex(m)).filter((i) => i >= 0));
+      agentSetChannels(prev.map((c) =>
+        wanted.has(c.channelIndex) ? { ...c, visible } : c
+      ));
+      const names = markers.join(', ');
+      return { message: `${visible ? 'Enabled' : 'Hid'} ${names}`, undo: () => restore(prev) };
+    };
+
+    registerActions({
+      enableChannels: ({ markers = [] }) => setVisibility(markers, true),
+      disableChannels: ({ markers = [] }) => setVisibility(markers, false),
+
+      addChannel: ({ marker, color }) => {
+        const idx = findChannelIndex(marker);
+        if (idx < 0) return { message: `Unknown marker "${marker}"` };
+        const prev = snapshot();
+        if (prev.some((c) => c.channelIndex === idx)) {
+          return setVisibility([marker], true);
+        }
+        const next = [...prev, {
+          id: `agent-${idx}`,
+          channelIndex: idx,
+          markerName: channelNameAt(idx),
+          name: channelNameAt(idx),
+          visible: true,
+          color: color || '#ffffff',
+          // undefined → Main_View auto-ranges (thresholdMin/Max ?? autoMin/autoMax).
+          // 0/0 would create an empty [0,0] window that filters out every voxel.
+          thresholdMin: undefined,
+          thresholdMax: undefined,
+          opacity: 1
+        }];
+        agentSetChannels(next);
+        return { message: `Added ${channelNameAt(idx)}`, undo: () => restore(prev) };
+      },
+
+      setThreshold: ({ marker, min, max }) => {
+        const idx = findChannelIndex(marker);
+        const prev = snapshot();
+        agentSetChannels(prev.map((c) =>
+          c.channelIndex === idx ? { ...c, thresholdMin: min ?? c.thresholdMin, thresholdMax: max ?? c.thresholdMax } : c
+        ));
+        return { message: `Set ${marker} threshold ${min}–${max}`, undo: () => restore(prev) };
+      },
+
+      setChannelColor: ({ marker, color }) => {
+        const idx = findChannelIndex(marker);
+        const prev = snapshot();
+        agentSetChannels(prev.map((c) => (c.channelIndex === idx ? { ...c, color } : c)));
+        return { message: `Recolored ${marker}`, undo: () => restore(prev) };
+      },
+
+      applyFilter: () => {
+        agentSetChannels(channelsRef.current.map((c) => ({ ...c })));
+        return { message: 'Applied filter' };
+      },
+
+      // Show ONLY the given marker(s); hide the rest.
+      isolateChannel: ({ marker, markers }) => {
+        const list = markers || (marker ? [marker] : []);
+        const wanted = new Set(list.map((m) => findChannelIndex(m)).filter((i) => i >= 0));
+        if (wanted.size === 0) return { message: `Marker not in view: ${list.join(', ') || '(none)'}` };
+        const prev = snapshot();
+        agentSetChannels(prev.map((c) => ({ ...c, visible: wanted.has(c.channelIndex) })));
+        return { message: `Isolated ${list.join(', ')}`, undo: () => restore(prev) };
+      },
+
+      // Make every channel visible.
+      showAllChannels: () => {
+        const prev = snapshot();
+        agentSetChannels(prev.map((c) => ({ ...c, visible: true })));
+        return { message: 'Showing all channels', undo: () => restore(prev) };
+      },
+
+      // Remove a channel from the list entirely.
+      removeChannel: ({ marker }) => {
+        const idx = findChannelIndex(marker);
+        if (idx < 0) return { message: `Unknown marker "${marker}"` };
+        const prev = snapshot();
+        if (!prev.some((c) => c.channelIndex === idx)) return { message: `${marker} is not in view.` };
+        agentSetChannels(prev.filter((c) => c.channelIndex !== idx));
+        return { message: `Removed ${channelNameAt(idx)}`, undo: () => restore(prev) };
+      },
+
+      // Reset a channel's thresholds back to auto (full range).
+      resetThreshold: ({ marker }) => {
+        const idx = findChannelIndex(marker);
+        const prev = snapshot();
+        agentSetChannels(prev.map((c) =>
+          c.channelIndex === idx ? { ...c, thresholdMin: undefined, thresholdMax: undefined } : c
+        ));
+        return { message: `Reset ${marker} threshold to auto`, undo: () => restore(prev) };
+      }
+    });
+
+    return () => unregisterActions([
+      'enableChannels', 'disableChannels', 'addChannel',
+      'setThreshold', 'setChannelColor', 'applyFilter',
+      'isolateChannel', 'showAllChannels', 'removeChannel', 'resetThreshold'
+    ]);
+  }, [agentSetChannels, registerActions, unregisterActions]);
 
   const [channelRanges, setChannelRanges] = useState({}); // Store data ranges for each channel
   const [pendingThresholds, setPendingThresholds] = useState({});
@@ -474,12 +603,22 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
   // State for showing help tooltip
   const [showHelp, setShowHelp] = useState(false);
 
+  // Are there unapplied threshold edits? Drives the Apply Filter button state.
+  const hasPendingThresholds = channels.some((channel) => {
+    const pending = pendingThresholds[channel.id];
+    if (!pending) return false;
+    return (
+      pending.thresholdMin !== channel.thresholdMin ||
+      pending.thresholdMax !== channel.thresholdMax
+    );
+  });
+
   return (
     <div style={{
       height: '100%',
       width: '100%',
       backgroundColor: '#000000',
-      border: '1px solid #444',
+      border: '1px solid var(--border)',
       padding: '10px',
       display: 'flex',
       flexDirection: 'column',
@@ -494,7 +633,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
         justifyContent: 'space-between',
         marginBottom: '16px',
         paddingBottom: '12px',
-        borderBottom: '1px solid #444'
+        borderBottom: '1px solid var(--border)'
       }}>
         <h3 style={{ margin: 0, fontSize: '15px', fontFamily: 'var(--font-display)', color: 'var(--text-1)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(59,130,246,0.5))' }}>
@@ -508,29 +647,29 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
           Channel Selection
           {/* Help Button */}
           <button
+            className="mtv-press"
             onClick={() => setShowHelp(!showHelp)}
             style={{
               background: 'transparent',
               border: '1px solid rgba(255, 255, 255, 0.3)',
               borderRadius: '50%',
-              width: '18px',
-              height: '18px',
+              width: '24px',
+              height: '24px',
               cursor: 'pointer',
               color: '#fff',
-              fontSize: '11px',
+              fontSize: '12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 0,
-              transition: 'all 0.2s'
+              padding: 0
             }}
             onMouseEnter={(e) => {
-              e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
             }}
             onMouseLeave={(e) => {
-              e.target.style.background = 'transparent';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
             }}
             title="Show channel selection help"
           >
@@ -543,7 +682,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
       {showHelp && (
         <div style={{
           backgroundColor: '#1a1a1a',
-          border: '1px solid #444',
+          border: '1px solid var(--border)',
           borderRadius: '4px',
           padding: '12px',
           marginBottom: '12px'
@@ -576,7 +715,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                 padding: '6px',
                 backgroundColor: '#1a1a1a',
                 borderRadius: '4px',
-                border: '1px solid #444'
+                border: '1px solid var(--border)'
               }}
             >
               {/* Visibility Checkbox */}
@@ -614,13 +753,17 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                 value={channel.channelIndex}
                 onChange={(e) => updateChannel(channel.id, 'channelIndex', parseInt(e.target.value))}
                 style={{
-                  padding: '5px 8px',
+                  padding: '5px 6px',
                   backgroundColor: '#2a2a2a',
                   color: 'white',
                   border: '1px solid #555',
                   borderRadius: '4px',
                   fontSize: '11px',
-                  minWidth: '100px',
+                  width: '74px',
+                  minWidth: '74px',
+                  maxWidth: '74px',
+                  flexShrink: 0,
+                  textOverflow: 'ellipsis',
                   cursor: 'pointer',
                   outline: 'none'
                 }}
@@ -685,7 +828,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
               </div>
 
               {/* Threshold Range Slider (Dual Range with Value Labels) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '160px', flex: 1, position: 'relative' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '120px', flex: 1, position: 'relative', paddingRight: '2px' }}>
                 {(() => {
                   const dataRange = channel.dataRange || [0, 65535];
                   const rangeMin = dataRange[0];
@@ -698,6 +841,10 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                   const thresholdMax = pending.thresholdMax;
                   const minPercent = ((thresholdMin - rangeMin) / (rangeMax - rangeMin)) * 100;
                   const maxPercent = ((thresholdMax - rangeMin) / (rangeMax - rangeMin)) * 100;
+                  // Keep value pills inside the track so the numbers never get clipped.
+                  const clampLabel = (p) => Math.min(94, Math.max(6, p));
+                  const minLabelPercent = clampLabel(minPercent);
+                  const maxLabelPercent = clampLabel(maxPercent);
 
                   return (
                     <>
@@ -706,7 +853,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                         {/* Min value label */}
                         <div style={{
                           position: 'absolute',
-                          left: `${minPercent}%`,
+                          left: `${minLabelPercent}%`,
                           transform: 'translateX(-50%)',
                           top: '0px',
                           backgroundColor: channel.color,
@@ -725,7 +872,7 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
                         {/* Max value label */}
                         <div style={{
                           position: 'absolute',
-                          left: `${maxPercent}%`,
+                          left: `${maxLabelPercent}%`,
                           transform: 'translateX(-50%)',
                           top: '0px',
                           backgroundColor: channel.color,
@@ -903,62 +1050,39 @@ const ChannelSelection = ({ onChannelsChange, presetChannels = [], presetVersion
       {/* Add Channel Button */}
       <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
         <button
+          className="mtv-press"
           onClick={addChannel}
           style={{
             flex: 1,
             padding: '8px 16px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
+            backgroundColor: 'var(--accent)',
+            color: '#fff',
+            border: '1px solid var(--accent)',
+            borderRadius: 'var(--radius-sm)',
             cursor: 'pointer',
             fontSize: '11px',
-            fontWeight: '500',
+            fontWeight: '600',
             textTransform: 'uppercase',
             letterSpacing: '0.4px'
           }}
-          onMouseOver={(e) => { e.target.style.backgroundColor = '#45a049'; }}
-          onMouseOut={(e) => { e.target.style.backgroundColor = '#4CAF50'; }}
+          onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-strong)'; }}
+          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent)'; }}
         >
           + Add Channel
         </button>
         <button
+          className="mtv-press"
           onClick={applyPendingThresholds}
-          disabled={!channels.some((channel) => {
-            const pending = pendingThresholds[channel.id];
-            if (!pending) return false;
-            return (
-              pending.thresholdMin !== channel.thresholdMin ||
-              pending.thresholdMax !== channel.thresholdMax
-            );
-          })}
+          disabled={!hasPendingThresholds}
           style={{
             padding: '8px 16px',
-            backgroundColor: channels.some((channel) => {
-              const pending = pendingThresholds[channel.id];
-              if (!pending) return false;
-              return (
-                pending.thresholdMin !== channel.thresholdMin ||
-                pending.thresholdMax !== channel.thresholdMax
-              );
-            })
-              ? '#2d7ff9'
-              : '#444',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: channels.some((channel) => {
-              const pending = pendingThresholds[channel.id];
-              if (!pending) return false;
-              return (
-                pending.thresholdMin !== channel.thresholdMin ||
-                pending.thresholdMax !== channel.thresholdMax
-              );
-            })
-              ? 'pointer'
-              : 'default',
+            backgroundColor: hasPendingThresholds ? 'var(--accent-soft)' : 'var(--bg-3)',
+            color: hasPendingThresholds ? 'var(--accent)' : 'var(--text-3)',
+            border: `1px solid ${hasPendingThresholds ? 'var(--accent)' : 'var(--border)'}`,
+            borderRadius: 'var(--radius-sm)',
+            cursor: hasPendingThresholds ? 'pointer' : 'not-allowed',
             fontSize: '11px',
-            fontWeight: '500',
+            fontWeight: '600',
             textTransform: 'uppercase',
             letterSpacing: '0.4px'
           }}
