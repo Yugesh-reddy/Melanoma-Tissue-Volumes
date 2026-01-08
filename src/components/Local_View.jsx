@@ -1,6 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { loadChannelData } from '../hooks/useChannelData';
+import { computeRegionSummary } from '../utils/regionStats';
+import { runEngine } from '../services/phenotypeEngine';
+import AskTissueButton from './AskTissueButton';
+import { useAgentActions } from '../services/agentActions';
 
 const OPACITY_FLOOR = 0.35;
 const OPACITY_BOOST = 1.3;
@@ -732,10 +736,14 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
     const handleResize = () => {
       const width = container.clientWidth;
       const height = container.clientHeight;
+      if (width === 0 || height === 0) return;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
     };
+    // Observe the container so maximizing the panel (no window resize) refits the scene.
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
     window.addEventListener('resize', handleResize);
 
     // Cleanup
@@ -744,6 +752,7 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
         cancelAnimationFrame(animationRef.current);
       }
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
@@ -893,24 +902,23 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
     }
   }, [showInfoModal]);
 
-  // Reset camera view to initial position with visual feedback
-  // If onCloseTab is provided, close the current tab instead of resetting camera
+  // Reset camera view to its initial framing.
+  // This ONLY restores the camera position/zoom/pan — it does NOT remove the
+  // selection or close the tab (closing is handled by the tab's × button).
   const resetView = (e) => {
-    // If we have onCloseTab callback, close the current tab
-    if (onCloseTab && regionId !== undefined && selectedRegionData) {
-      // Create a mock event if not provided
-      const event = e || { stopPropagation: () => {} };
-      event.stopPropagation();
-      
-      // Close the current tab by calling handleCloseTab
-      onCloseTab(event, selectedRegionData);
-      console.log('Local_View: Closing tab via Reset View');
-      return;
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    if (initialCameraStateRef.current) {
+      cameraStateRef.current = {
+        rotation: { ...initialCameraStateRef.current.rotation },
+        distance: initialCameraStateRef.current.distance,
+        panOffset: { ...initialCameraStateRef.current.panOffset }
+      };
+      updateCameraPosition();
+      console.log('Local_View: Camera reset to initial position');
+    } else {
+      console.log('Local_View: No initial camera state to reset to');
     }
-    
-    // Otherwise, if no tabs exist, the view will show placeholder automatically
-    // No need to do anything - just log
-    console.log('Local_View: No tabs to close, view will show placeholder');
   };
 
   // Calculate section depth and volume from selected region data
@@ -953,162 +961,51 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
       overflow: 'hidden',
       position: 'relative'
     }}>
-      {/* Info Button - Floating in top right */}
-      {selectedRegionData && sectionInfo && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowInfoModal(!showInfoModal);
-          }}
-          style={{
-            position: 'absolute',
-            top: '6px',
-            right: '6px',
-            zIndex: 100,
-            background: 'rgba(0,0,0,0.6)',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            borderRadius: '50%',
-            width: '22px',
-            height: '22px',
-            cursor: 'pointer',
-            color: '#fff',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 0,
-            transition: 'all 0.2s',
-            lineHeight: '1'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.background = 'rgba(74, 222, 128, 0.3)';
-            e.target.style.borderColor = '#4ade80';
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.background = 'rgba(0,0,0,0.6)';
-            e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-          }}
-          title="Show selection information"
-        >
-          ⓘ
-        </button>
-      )}
-
-      {/* Info Modal */}
-      {selectedRegionData && sectionInfo && showInfoModal && (
-        <div
-          id="info-modal"
-          style={{
-            position: 'absolute',
-            top: '34px',
-            left: '8px',
-            backgroundColor: 'rgba(20, 20, 20, 0.95)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '6px',
-            padding: '10px',
-            zIndex: 1000,
-            fontSize: '11px',
-            fontFamily: 'monospace',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-            minWidth: '180px'
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{
-            fontWeight: 'bold',
-            marginBottom: '8px',
-            fontSize: '13px',
-            color: '#fff',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
-            paddingBottom: '6px'
-          }}>
-            3D Selection Info
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px' }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Dimensions (μm³):</span>
-            <span style={{ color: '#4ade80', fontWeight: '500' }}>
-              {sectionInfo.width} × {sectionInfo.height} × {sectionInfo.depth}
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px' }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Volume:</span>
-            <span style={{ color: '#4ade80', fontWeight: '500' }}>
-              {sectionInfo.volume.toLocaleString()} μm³
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.2)', paddingTop: '6px' }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Cells:</span>
-            <span style={{ color: '#4ade80', fontWeight: '500' }}>
-              {cellCount.toLocaleString()}
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', gap: '16px' }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Scale:</span>
-            <span style={{ color: '#4ade80', fontWeight: '500', fontStyle: 'italic' }}>
-              1:1 with main view
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Reset View Button - Consistent with Region_Selection */}
+      {/* Reset View Button - top-left floating control */}
       {selectedRegionData && (
         <button
           id="reset-view-btn"
+          className="mtv-press"
           onClick={resetView}
           style={{
             position: 'absolute',
-            bottom: '10px',
-            right: '10px',
+            top: '6px',
+            left: '6px',
             zIndex: 100,
-            padding: '6px 12px',
-            fontSize: '12px',
-            fontWeight: 500,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '5px 10px',
+            fontSize: '11px',
+            fontWeight: 600,
             color: '#fff',
-            background: '#2d7ff9',
-            border: '1px solid #2d7ff9',
-            borderRadius: '4px',
+            background: 'rgba(0,0,0,0.6)',
+            border: '1px solid rgba(255,255,255,0.3)',
+            borderRadius: 'var(--radius-sm)',
             cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            outline: 'none'
+            transition: 'background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), transform 140ms var(--ease-out)',
+            outline: 'none',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            lineHeight: 1
           }}
           onMouseEnter={(e) => {
-            e.target.style.background = '#4a90ff';
-            e.target.style.borderColor = '#4a90ff';
+            e.currentTarget.style.background = 'var(--accent-soft)';
+            e.currentTarget.style.borderColor = 'var(--accent)';
           }}
           onMouseLeave={(e) => {
-            e.target.style.background = '#2d7ff9';
-            e.target.style.borderColor = '#2d7ff9';
+            e.currentTarget.style.background = 'rgba(0,0,0,0.6)';
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)';
           }}
           title="Reset camera view to initial position"
         >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M3 3.5v4.5h4.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           Reset
         </button>
       )}
-
-      {/* Scale Bar */}
-      <div style={{
-        position: 'absolute',
-        bottom: '20px',
-        right: '20px',
-        zIndex: 100,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-end'
-      }}>
-        <div style={{
-          width: '60px',
-          height: '2px',
-          backgroundColor: 'white',
-          marginBottom: '4px'
-        }} />
-        <div style={{
-          color: 'white',
-          fontSize: '10px'
-        }}>
-          10 µm
-        </div>
-      </div>
 
       <div
         ref={mountRef}
@@ -1153,6 +1050,64 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
   useEffect(() => {
     console.log('Local_View: regionsArray length:', regionsArray.length);
   }, [regionsArray]);
+
+  // Agent tool: switch the active Box tab. Accepts 1-based `box` (matching the
+  // "Box N" tab labels) or 0-based `index`.
+  const { registerActions, unregisterActions, registerState, unregisterState } = useAgentActions();
+  const activeTabIndexRef = useRef(activeTabIndex);
+  useEffect(() => { activeTabIndexRef.current = activeTabIndex; }, [activeTabIndex]);
+  const visibleRegionsRef = useRef(visibleRegions);
+  useEffect(() => { visibleRegionsRef.current = visibleRegions; }, [visibleRegions]);
+  const visibleCountRef = useRef(visibleRegions.length);
+  useEffect(() => { visibleCountRef.current = visibleRegions.length; }, [visibleRegions]);
+
+  useEffect(() => {
+    const resolveTarget = (box, index) => {
+      const count = visibleCountRef.current;
+      if (count === 0) return null;
+      let target = typeof box === 'number' ? box - 1
+        : (typeof index === 'number' ? index : NaN);
+      if (Number.isNaN(target)) return null;
+      return Math.max(0, Math.min(count - 1, target));
+    };
+
+    registerActions({
+      switchBox: ({ box, index } = {}) => {
+        if (visibleCountRef.current === 0) return { message: 'No boxes to switch to.' };
+        const target = resolveTarget(box, index);
+        if (target === null) return { message: 'Specify which box (e.g. box 2).' };
+        const prev = activeTabIndexRef.current;
+        setActiveTabIndex(target);
+        return { message: `Switched to Box ${target + 1}`, undo: () => setActiveTabIndex(prev) };
+      },
+      closeBox: ({ box, index } = {}) => {
+        if (visibleCountRef.current === 0) return { message: 'No boxes to close.' };
+        const target = resolveTarget(box, index);
+        if (target === null) return { message: 'Specify which box to close (e.g. box 2).' };
+        const region = visibleRegionsRef.current[target];
+        if (!region) return { message: 'No such box.' };
+        if (onRemoveSelection) onRemoveSelection(region.id);
+        return { message: `Closed Box ${target + 1}` };
+      },
+      clearAllBoxes: () => {
+        if (visibleCountRef.current === 0) return { message: 'No boxes to clear.' };
+        if (onClearAllSelections) { onClearAllSelections(); return { message: 'Cleared all boxes' }; }
+        return { message: 'Clear-all is not available.' };
+      }
+    });
+
+    registerState('localView', () => {
+      const n = visibleCountRef.current;
+      if (n === 0) return 'Local View: no boxes selected.';
+      const active = Math.min(activeTabIndexRef.current, n - 1) + 1;
+      return `Local View: ${n} box(es), active = Box ${active}.`;
+    });
+
+    return () => {
+      unregisterActions(['switchBox', 'closeBox', 'clearAllBoxes']);
+      unregisterState('localView');
+    };
+  }, [registerActions, unregisterActions, registerState, unregisterState, onRemoveSelection, onClearAllSelections]);
 
   // Update active tab when new selection is added or when tabs are closed
   useEffect(() => {
@@ -1252,29 +1207,30 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
       userSelect: 'none',
       padding: '6px 10px',
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+      borderBottom: '1px solid var(--border)',
       flexShrink: 0,
       zIndex: 10
     }}>
       {/* Title with composite glyph */}
       <h3 style={{
         margin: 0,
-        fontSize: '14px',
-        color: 'white',
-        fontWeight: '500',
+        fontSize: '15px',
+        color: 'var(--text-1)',
+        fontFamily: 'var(--font-display)',
+        fontWeight: 600,
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
         flexShrink: 0
       }}>
-        {/* Composite Glyph: Magnifying glass + 3D Cube */}
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
-          <path d="M12 2L4 6v8l8 4 8-4V6l-8-4z" stroke="#4ade80" strokeWidth="1.5" fill="rgba(74, 222, 128, 0.15)" />
-          <path d="M4 6l8 4 8-4M12 10v8" stroke="#4ade80" strokeWidth="1.5" strokeLinecap="round" />
-          <circle cx="17" cy="17" r="4" stroke="#fff" strokeWidth="1.5" fill="rgba(0,0,0,0.5)" />
-          <line x1="20" y1="20" x2="23" y2="23" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+        {/* Glyph: 3D cube + magnifier (uniform blue accent) */}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(59,130,246,0.5))' }}>
+          <path d="M12 2L4 6v8l8 4 8-4V6l-8-4z" stroke="#3b82f6" strokeWidth="1.6" fill="rgba(59,130,246,0.12)" />
+          <path d="M4 6l8 4 8-4M12 10v8" stroke="#3b82f6" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="17" cy="17" r="4" stroke="#3b82f6" strokeWidth="1.6" fill="rgba(10,11,14,0.6)" />
+          <line x1="20" y1="20" x2="23" y2="23" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
         </svg>
-        <span style={{ color: '#4ade80' }}>Local View</span>
+        <span style={{ color: 'var(--text-1)' }}>Local View</span>
         {onToggleMaximize && (
           <button
             type="button"
@@ -1297,13 +1253,12 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
 
       {/* Tabs/Toggle buttons - same line as title */}
       {regionsArray.length > 0 && (
-        <div style={{
+        <div className="mtv-no-scrollbar" style={{
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
           padding: '3px',
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '4px',
+          background: 'transparent',
           maxWidth: '60%',
           overflowX: 'auto',
           overflowY: 'hidden'
@@ -1324,7 +1279,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
                   background: isActive ? `${selectionColor}33` : 'transparent', // 33 = 20% opacity in hex
                   borderRadius: '3px',
                   cursor: 'pointer',
-                  transition: 'all 0.2s',
+                  transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)',
                   border: isActive ? `1px solid ${selectionColor}` : '1px solid transparent'
                 }}
                 onClick={() => setActiveTabIndex(index)}
@@ -1391,7 +1346,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
                 fontWeight: '500',
                 marginLeft: '4px',
                 whiteSpace: 'nowrap',
-                transition: 'all 0.2s'
+                transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)'
               }}
               onMouseEnter={(e) => e.target.style.background = 'rgba(255, 100, 100, 0.4)'}
               onMouseLeave={(e) => e.target.style.background = 'rgba(255, 100, 100, 0.2)'}
@@ -1412,7 +1367,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
         height: '100%',
         width: '100%',
         backgroundColor: '#000000',
-        border: '1px solid #444',
+        borderTop: '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -1445,7 +1400,7 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
       height: '100%',
       width: '100%',
       backgroundColor: '#000000',
-      border: '1px solid #444',
+      borderTop: '1px solid var(--border)',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden'
@@ -1458,6 +1413,27 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
         position: 'relative',
         overflow: 'hidden'
       }}>
+        {/* Ask AI - floating top-right of the body */}
+        {(() => {
+          const activeBox = regionsArray[activeTabIndex] || regionsArray[0] || null;
+          if (!activeBox) return null;
+          return (
+            <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 5 }}>
+              <AskTissueButton
+                variant="chip"
+                descriptor={{
+                  id: `region:${activeBox.id}`,
+                  kind: 'region',
+                  title: `Box ${(activeBox.index ?? activeTabIndex) + 1}`,
+                  resolve: async () => {
+                    const summary = await computeRegionSummary({ region: activeBox, channels });
+                    return { summary, engine: runEngine(summary) };
+                  }
+                }}
+              />
+            </div>
+          );
+        })()}
         {visibleRegions.map((region, index) => {
           const isActive = activeTabIndex === index;
           return (
