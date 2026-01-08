@@ -4,6 +4,7 @@ import { loadChannelData } from '../hooks/useChannelData';
 import { computeRegionSummary } from '../utils/regionStats';
 import { runEngine } from '../services/phenotypeEngine';
 import channelNamesData from '../channel_names.json';
+import { useAgentActions } from '../services/agentActions';
 
 // Selection colors - synced with App.jsx and Main_View
 const SELECTION_COLORS = [
@@ -73,6 +74,36 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
   const containerRef = useRef(null);
   const [graphType, setGraphType] = useState('composition'); // 'composition', 'bar', 'heatmap', 'violin'
   const [targetGraphType, setTargetGraphType] = useState('composition'); // For instant visual feedback
+
+  // Agent tool + system awareness for the Graph Panel visualization.
+  const { registerActions, unregisterActions, registerState, unregisterState } = useAgentActions();
+  const graphTypeRef = useRef(graphType);
+  useEffect(() => { graphTypeRef.current = graphType; }, [graphType]);
+
+  useEffect(() => {
+    const VIEW_MAP = { cells: 'composition', composition: 'composition', bar: 'bar', heatmap: 'heatmap', violin: 'violin' };
+    const LABEL = { composition: 'cells', bar: 'bar', heatmap: 'heatmap', violin: 'violin' };
+    registerActions({
+      setGraphView: ({ view } = {}) => {
+        const target = VIEW_MAP[(view || '').toLowerCase()];
+        if (!target) return { message: `Unknown graph view "${view}" (use cells/bar/heatmap/violin).` };
+        const prev = graphTypeRef.current;
+        setTargetGraphType(target);
+        setGraphType(target);
+        setIsCalculating(true);
+        setTimeout(() => setIsCalculating(false), 80);
+        return {
+          message: `Graph view: ${LABEL[target]}`,
+          undo: () => { setTargetGraphType(prev); setGraphType(prev); }
+        };
+      }
+    });
+    registerState('graph', () => `Graph Panel visualization: ${LABEL[graphTypeRef.current] || graphTypeRef.current}.`);
+    return () => {
+      unregisterActions(['setGraphView']);
+      unregisterState('graph');
+    };
+  }, [registerActions, unregisterActions, registerState, unregisterState]);
 
   // Cell-population composition per region (from the Tissue Intelligence engine).
   const [compositionData, setCompositionData] = useState([]);
@@ -1276,8 +1307,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
         height: '100%',
         width: '100%',
         backgroundColor: '#000000',
-        border: '1px solid #444',
-        padding: '1px',
+        borderTop: '1px solid var(--border)',
+        borderLeft: '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
@@ -1294,35 +1325,38 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
         alignItems: 'center',
         cursor: onToggleMaximize ? 'pointer' : 'default',
         userSelect: 'none',
-        padding: '8px 12px',
+        padding: '6px 10px',
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        borderBottom: '1px solid var(--border)',
         flexShrink: 0,
         zIndex: 10
       }}>
         <h3 style={{
           margin: 0,
-          fontSize: '14px',
-          color: 'white',
-          fontWeight: '500',
+          fontSize: '15px',
+          color: 'var(--text-1)',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
-          gap: '8px'
+          gap: '8px',
+          whiteSpace: 'nowrap',
+          flexShrink: 0
         }}>
-          {/* Composite Glyph: Bar chart + DNA helix */}
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(74, 222, 128, 0.5))' }}>
+          {/* Glyph: bar chart + helix (uniform blue accent) */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(59,130,246,0.5))' }}>
             {/* Bar chart */}
-            <rect x="2" y="14" width="4" height="8" rx="1" fill="#4ade80" opacity="0.8" />
-            <rect x="8" y="10" width="4" height="12" rx="1" fill="#4ade80" opacity="0.9" />
-            <rect x="14" y="6" width="4" height="16" rx="1" fill="#4ade80" />
-            {/* DNA helix overlay */}
-            <path d="M18 2c2 2 2 4 0 6s-2 4 0 6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-            <path d="M22 2c-2 2-2 4 0 6s2 4 0 6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-            <line x1="18" y1="4" x2="22" y2="4" stroke="#fff" strokeWidth="1" opacity="0.7" />
-            <line x1="18" y1="8" x2="22" y2="8" stroke="#fff" strokeWidth="1" opacity="0.7" />
-            <line x1="18" y1="12" x2="22" y2="12" stroke="#fff" strokeWidth="1" opacity="0.7" />
+            <rect x="2" y="14" width="4" height="8" rx="1" fill="#3b82f6" opacity="0.7" />
+            <rect x="8" y="10" width="4" height="12" rx="1" fill="#3b82f6" opacity="0.85" />
+            <rect x="14" y="6" width="4" height="16" rx="1" fill="#3b82f6" />
+            {/* Helix overlay */}
+            <path d="M18 2c2 2 2 4 0 6s-2 4 0 6" stroke="#93b8f8" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+            <path d="M22 2c-2 2-2 4 0 6s2 4 0 6" stroke="#93b8f8" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+            <line x1="18" y1="4" x2="22" y2="4" stroke="#93b8f8" strokeWidth="1" opacity="0.7" />
+            <line x1="18" y1="8" x2="22" y2="8" stroke="#93b8f8" strokeWidth="1" opacity="0.7" />
+            <line x1="18" y1="12" x2="22" y2="12" stroke="#93b8f8" strokeWidth="1" opacity="0.7" />
           </svg>
-          <span style={{ color: '#4ade80' }}>Graph Panel</span>
+          <span style={{ color: 'var(--text-1)' }}>Graph Panel</span>
           {onToggleMaximize && (
             <button
               type="button"
@@ -1366,7 +1400,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              transition: 'all 0.2s'
+              transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)'
             }}
             title="Composition - inferred cell populations per region"
             disabled={isCalculating}
@@ -1399,7 +1433,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              transition: 'all 0.2s',
+              transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)',
               opacity: isCalculating && targetGraphType !== 'bar' ? 0.7 : 1
             }}
             title="Bar Chart - Cell count distribution"
@@ -1442,7 +1476,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              transition: 'all 0.2s',
+              transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)',
               opacity: isCalculating && targetGraphType !== 'heatmap' ? 0.7 : 1
             }}
             title="Heatmap - Biomarker co-expression correlation"
@@ -1490,7 +1524,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              transition: 'all 0.2s',
+              transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)',
               opacity: isCalculating && targetGraphType !== 'violin' ? 0.7 : 1
             }}
             title="Violin Plot - Intensity distribution shapes"
@@ -1710,7 +1744,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                   })()}
 
                   <div style={{ fontSize: '9px', color: 'var(--text-3)', marginTop: '14px', lineHeight: 1.4 }}>
-                    Proportions are relative shares of populations enriched above the whole-volume baseline. Research support only.
+                    Proportions are relative shares of inferred cell populations, from per-marker abundance in each box. Research support only.
                   </div>
                 </>
               )}
@@ -1840,7 +1874,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                     display: 'flex',
                     alignItems: 'center',
                     gap: '3px',
-                    transition: 'all 0.2s'
+                    transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)'
                   }}
                 >
                   <div style={{
@@ -1887,7 +1921,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            transition: 'all 0.2s'
+                            transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)'
                           }}
                           onMouseEnter={(e) => {
                             if (!isSelected) e.target.style.background = 'rgba(255, 255, 255, 0.1)';
@@ -1937,7 +1971,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                     display: 'flex',
                     alignItems: 'center',
                     gap: '3px',
-                    transition: 'all 0.2s'
+                    transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)'
                   }}
                 >
                   <div style={{
@@ -1984,7 +2018,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            transition: 'all 0.2s'
+                            transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)'
                           }}
                           onMouseEnter={(e) => {
                             if (!isSelected) e.target.style.background = 'rgba(255, 255, 255, 0.1)';
