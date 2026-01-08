@@ -9,6 +9,10 @@ import { Line2 } from 'three/examples/jsm/lines/Line2';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial';
 import { loadChannelData } from '../hooks/useChannelData';
+import { computeRegionSummary } from '../utils/regionStats';
+import { runEngine } from '../services/phenotypeEngine';
+import { useTissueIntelligence } from '../services/tissueIntelligenceContext';
+import AskTissueButton from './AskTissueButton';
 
 const CAMERA_INITIAL_STATE = {
   rotation: { x: 0, y: Math.PI },
@@ -80,10 +84,12 @@ const getConfigSignature = (config) =>
   ].join('|');
 
 const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initialSelectionBounds, selectedRegionsData = [] }) => {
+  const { openGeneral } = useTissueIntelligence();
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
+  const tissueBadgeRefs = useRef({}); // box id -> badge DOM node (3D-anchored AI triggers)
   const composerRef = useRef(null);
   const aaPassRef = useRef(null);
   const msaaRenderTargetRef = useRef(null);
@@ -623,44 +629,46 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       state.panOffset.z += vector.z;
     };
 
-    // Gaming-style controls:
-    // A/D or Left/Right arrows: move left/right
-    // W/S or Up/Down arrows: move up/down
-    // Z/X: zoom in/out
+    // Camera controls:
+    // Left/Right arrows: move left/right
+    // Up/Down arrows: move up/down
+    // Ctrl+Z / Ctrl+X: zoom in/out
 
-    // A - Move Left
-    if (keys.a || keys.arrowleft) {
+    const ctrlHeld = keys.control || keys.controlleft || keys.controlright;
+
+    // Left - Move Left
+    if (keys.arrowleft) {
       camera.getWorldDirection(forward);
       offset.crossVectors(camera.up, forward).normalize().multiplyScalar(speed);
       applyOffset(offset);
       moved = true;
     }
-    // D - Move Right
-    if (keys.d || keys.arrowright) {
+    // Right - Move Right
+    if (keys.arrowright) {
       camera.getWorldDirection(forward);
       offset.crossVectors(camera.up, forward).normalize().multiplyScalar(-speed);
       applyOffset(offset);
       moved = true;
     }
-    // W - Move Up
-    if (keys.w || keys.arrowup) {
+    // Up - Move Up
+    if (keys.arrowup) {
       offset.copy(camera.up).normalize().multiplyScalar(speed);
       applyOffset(offset);
       moved = true;
     }
-    // S - Move Down
-    if (keys.s || keys.arrowdown) {
+    // Down - Move Down
+    if (keys.arrowdown) {
       offset.copy(camera.up).normalize().multiplyScalar(-speed);
       applyOffset(offset);
       moved = true;
     }
-    // Z - Zoom In
-    if (keys.z) {
+    // Ctrl+Z - Zoom In
+    if (ctrlHeld && keys.z) {
       state.distance = clamp(state.distance - zoomSpeed, 0.1, 20);
       moved = true;
     }
-    // X - Zoom Out
-    if (keys.x) {
+    // Ctrl+X - Zoom Out
+    if (ctrlHeld && keys.x) {
       state.distance = clamp(state.distance + zoomSpeed, 0.1, 20);
       moved = true;
     }
@@ -1536,7 +1544,20 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
     const handleContextMenu = (event) => event.preventDefault();
 
+    const isEditableTarget = (target) => {
+      if (!target) return false;
+      const tag = target.tagName;
+      return (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target.isContentEditable
+      );
+    };
+
     const handleKeyDown = (event) => {
+      // Ignore camera shortcuts while typing in the chat box or any text field
+      if (isEditableTarget(event.target)) return;
       const key = event.key.toLowerCase();
       keysRef.current[key] = true;
       keysRef.current[event.code.toLowerCase()] = true;
@@ -1893,6 +1914,38 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 
   const cuboidDimensions = getCuboidDimensions();
 
+  // Keep the per-box "Ask Tissue Intelligence" badges glued to the top of each
+  // drawn cuboid by projecting its world-space center to screen every frame.
+  useEffect(() => {
+    let raf;
+    const tmp = new THREE.Vector3();
+    const update = () => {
+      const camera = cameraRef.current;
+      const renderer = rendererRef.current;
+      if (camera && renderer) {
+        const w = renderer.domElement.clientWidth;
+        const h = renderer.domElement.clientHeight;
+        selectedRegionsData.forEach((box) => {
+          const el = tissueBadgeRefs.current[box.id];
+          const wb = box.worldBounds;
+          if (!el || !wb || !wb.center) return;
+          const halfY = (wb.size?.y || 0) / 2;
+          tmp.set(wb.center.x, wb.center.y + halfY, wb.center.z);
+          tmp.project(camera);
+          const x = (tmp.x * 0.5 + 0.5) * w;
+          const y = (-tmp.y * 0.5 + 0.5) * h;
+          const onScreen = tmp.z < 1 && x >= -40 && x <= w + 40 && y >= -40 && y <= h + 40;
+          el.style.transform = `translate(-50%, -130%) translate(${x}px, ${y}px)`;
+          el.style.opacity = onScreen ? '1' : '0';
+          el.style.pointerEvents = onScreen ? 'auto' : 'none';
+        });
+      }
+      raf = requestAnimationFrame(update);
+    };
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [selectedRegionsData]);
+
   return (
     <div style={{
       height: '100%',
@@ -1902,6 +1955,30 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       overflow: 'hidden',
       boxSizing: 'border-box'
     }}>
+      {/* 3D-anchored Tissue Intelligence badges, one per drawn cuboid */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 6, pointerEvents: 'none' }}>
+        {selectedRegionsData.map((box) => (
+          <div
+            key={box.id}
+            ref={(el) => { if (el) tissueBadgeRefs.current[box.id] = el; else delete tissueBadgeRefs.current[box.id]; }}
+            style={{ position: 'absolute', top: 0, left: 0, opacity: 0, transition: 'opacity 150ms var(--ease-out)', willChange: 'transform' }}
+          >
+            <AskTissueButton
+              variant="badge"
+              title={`Ask Tissue Intelligence about Box ${(box.index ?? 0) + 1}`}
+              descriptor={{
+                id: `region:${box.id}`,
+                kind: 'region',
+                title: `Box ${(box.index ?? 0) + 1}`,
+                resolve: async () => {
+                  const summary = await computeRegionSummary({ region: box, channels });
+                  return { summary, engine: runEngine(summary) };
+                }
+              }}
+            />
+          </div>
+        ))}
+      </div>
       <div ref={mountRef} style={{
         width: '100%',
         height: '100%',
@@ -1995,27 +2072,98 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
         }}
         style={{
           position: 'absolute',
-          top: '10px',
-          right: '10px',
+          top: '12px',
+          right: '12px',
           zIndex: 1000,
-          padding: '8px 16px',
-          backgroundColor: selectionMode ? '#4CAF50' : '#555',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '7px',
+          padding: '8px 14px',
+          background: selectionMode ? 'var(--accent)' : 'rgba(16,18,24,0.72)',
+          color: selectionMode ? '#ffffff' : 'var(--text-1)',
+          border: `1px solid ${selectionMode ? 'var(--accent)' : 'var(--border)'}`,
+          borderRadius: '9px',
           cursor: 'pointer',
-          fontSize: '14px',
-          fontWeight: 'bold',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-          transition: 'background-color 0.2s'
+          fontSize: '13px',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 600,
+          letterSpacing: '0.2px',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          boxShadow: selectionMode
+            ? '0 0 0 3px rgba(59,130,246,0.25), 0 4px 14px rgba(59,130,246,0.35)'
+            : '0 2px 8px rgba(0,0,0,0.35)',
+          transition: 'background 180ms var(--ease-out), box-shadow 180ms var(--ease-out), border-color 180ms var(--ease-out), transform 140ms var(--ease-out)'
+        }}
+        className="mtv-press"
+        onMouseEnter={(e) => {
+          if (!selectionMode) {
+            e.currentTarget.style.background = 'var(--bg-3)';
+            e.currentTarget.style.borderColor = 'var(--accent)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!selectionMode) {
+            e.currentTarget.style.background = 'rgba(16,18,24,0.72)';
+            e.currentTarget.style.borderColor = 'var(--border)';
+          }
         }}
         title={selectionMode ? 'Click to disable 3D selection' : 'Click to enable 3D selection'}
       >
-        {selectionMode ? '✓ 3D Selection' : '3D Selection'}
+        {selectionMode ? (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L4 6v8l8 4 8-4V6l-8-4z" stroke="currentColor" strokeWidth="1.7" fill="none" />
+            <path d="M4 6l8 4 8-4M12 10v8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
+        )}
+        3D Selection
+      </button>
+
+      {/* Tissue Intelligence launcher — opens the general, app-wide AI assistant */}
+      <button
+        type="button"
+        className="mtv-press"
+        onClick={() => openGeneral()}
+        style={{
+          position: 'absolute',
+          top: '12px',
+          right: '160px',
+          zIndex: 1000,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '7px',
+          padding: '8px 14px',
+          background: 'rgba(16,18,24,0.72)',
+          color: 'var(--text-1)',
+          border: '1px solid var(--border)',
+          borderRadius: '9px',
+          cursor: 'pointer',
+          fontSize: '13px',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 600,
+          letterSpacing: '0.2px',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+          transition: 'border-color 180ms var(--ease-out), background 180ms var(--ease-out), transform 140ms var(--ease-out)'
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(145,104,192,0.85)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+        title="Open Tissue Intelligence"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ filter: 'drop-shadow(0 0 3px rgba(120,90,200,0.55))' }}>
+          <path d="M12 0c0 6.627 5.373 12 12 12-6.627 0-12 5.373-12 12 0-6.627-5.373-12-12-12 6.627 0 12-5.373 12-12z" fill="#9168C0" />
+        </svg>
+        Tissue Intelligence
       </button>
 
       {/* Reset View Button - Bottom Right - Consistent with Region_Selection */}
       <button
+        className="mtv-press"
         onClick={resetCameraView}
         style={{
           position: 'absolute',
@@ -2026,20 +2174,20 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
           fontSize: '12px',
           fontWeight: 500,
           color: '#fff',
-          background: '#2d7ff9',
-          border: '1px solid #2d7ff9',
-          borderRadius: '4px',
+          background: 'var(--accent)',
+          border: '1px solid var(--accent)',
+          borderRadius: 'var(--radius-sm)',
           cursor: 'pointer',
-          transition: 'all 0.15s ease',
+          transition: 'background 150ms var(--ease-out), border-color 150ms var(--ease-out), transform 140ms var(--ease-out)',
           outline: 'none'
         }}
         onMouseEnter={(e) => {
-          e.target.style.background = '#4a90ff';
-          e.target.style.borderColor = '#4a90ff';
+          e.currentTarget.style.background = 'var(--accent-strong)';
+          e.currentTarget.style.borderColor = 'var(--accent-strong)';
         }}
         onMouseLeave={(e) => {
-          e.target.style.background = '#2d7ff9';
-          e.target.style.borderColor = '#2d7ff9';
+          e.currentTarget.style.background = 'var(--accent)';
+          e.currentTarget.style.borderColor = 'var(--accent)';
         }}
         title="Reset camera and clear all selections"
       >
