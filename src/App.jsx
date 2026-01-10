@@ -6,7 +6,11 @@ import Main_View from './components/Main_View';
 import Local_View from './components/Local_View';
 import Graph_Pannel from './components/Graph_Pannel';
 import Direction_view from './components/Direction_view';
-import AI_Analysis from './components/AI_Analysis';
+import SettingsModal from './components/SettingsModal';
+import TissueIntelligenceWindow from './components/TissueIntelligenceWindow';
+import ExpandedAgentDock from './components/ExpandedAgentDock';
+import { TissueIntelligenceProvider } from './services/tissueIntelligenceContext';
+import { AgentActionsProvider, useAgentActions } from './services/agentActions';
 
 // Helper function to convert RGB to hex
 const rgbToHex = (r, g, b) => {
@@ -48,10 +52,34 @@ const maximizedStyle = {
   left: 0,
   right: 0,
   bottom: 0,
-  zIndex: 60,
+  zIndex: 1000, // above Main_View's floating buttons
   overflow: 'hidden',
   boxSizing: 'border-box'
 };
+
+function PanelNavActions({ setMaximizedPanel, maximizedPanel }) {
+  const { registerActions, unregisterActions, registerState, unregisterState } = useAgentActions();
+  useEffect(() => {
+    const valid = ['local', 'graph', 'direction'];
+    registerActions({
+      maximizePanel: ({ panel }) => {
+        if (!valid.includes(panel)) return { message: `Unknown panel "${panel}"` };
+        setMaximizedPanel(panel);
+        return { message: `Maximized ${panel}`, undo: () => setMaximizedPanel(null) };
+      },
+      restorePanel: () => { setMaximizedPanel(null); return { message: 'Restored panels' }; }
+    });
+    return () => unregisterActions(['maximizePanel', 'restorePanel']);
+  }, [registerActions, unregisterActions, setMaximizedPanel]);
+
+  // Live "which panel is expanded" awareness.
+  useEffect(() => {
+    registerState('view', () => `Expanded panel: ${maximizedPanel || 'none (all three panels shown)'}.`);
+    return () => unregisterState('view');
+  }, [registerState, unregisterState, maximizedPanel]);
+
+  return null;
+}
 
 function App() {
   const [channels, setChannels] = useState([]);
@@ -71,9 +99,18 @@ function App() {
     []
   );
 
+  // Global Settings modal (AI model provider config).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+
   const handleChannelsChange = useCallback((updatedChannels) => {
     console.log('App: Channels updated:', updatedChannels.length, 'channels');
     setChannels(updatedChannels);
+  }, []);
+
+  const agentSetChannels = useCallback((updater) => {
+    setChannels((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+    setPresetVersion((v) => v + 1);
   }, []);
 
   const handleSelectionChange = useCallback((selectedData) => {
@@ -207,6 +244,9 @@ function App() {
   }, [aggregatedSignature, aggregatedRegionChannels]);
 
   return (
+    <AgentActionsProvider>
+      <PanelNavActions setMaximizedPanel={setMaximizedPanel} maximizedPanel={maximizedPanel} />
+    <TissueIntelligenceProvider openSettings={openSettings}>
     <div style={{
       display: 'flex',
       flexDirection: 'column',
@@ -221,7 +261,7 @@ function App() {
     }}>
       {/* Title - 9.5% height, 100% width */}
       <div style={{ height: '4%', width: '100%', flexShrink: 0, overflow: 'hidden' }}>
-        <Title softwareName="Melanoma Tissue Volumes" />
+        <Title softwareName="Melanoma Tissue Volumes" onOpenSettings={openSettings} />
       </div>
 
       {/* Main Content Area - 90.5% height, 100% width */}
@@ -255,6 +295,7 @@ function App() {
               onChannelsChange={handleChannelsChange}
               presetChannels={channels}
               presetVersion={presetVersion}
+              agentSetChannels={agentSetChannels}
             />
           </div>
           {/* Region Selection - 55% of sidebar height */}
@@ -283,13 +324,16 @@ function App() {
           flexShrink: 0,
           position: 'relative' // anchor for the maximized-panel overlay
         }}>
-          {/* Main View - 60% height (38% goes to the bottom panels) */}
+          {/* Main View - 60% height (40% goes to the bottom panels).
+              Hidden (not unmounted) while a bottom panel is maximized, so its
+              floating 3D-Selection / Reset buttons don't bleed over the overlay. */}
           <div style={{
             height: '60%',
             width: '100%',
             overflow: 'hidden',
             boxSizing: 'border-box',
-            flexShrink: 0
+            flexShrink: 0,
+            visibility: maximizedPanel ? 'hidden' : 'visible'
           }}>
             <Main_View
               channels={channels}
@@ -310,41 +354,54 @@ function App() {
             flexShrink: 0
           }}>
             {/* Local View */}
-            <div style={maximizedPanel === 'local' ? maximizedStyle : panelStyle}>
-              <Local_View
-                selectedRegionsData={selectedRegionsData}
-                channels={channels}
-                onRemoveSelection={handleRemoveSelection}
-                onClearAllSelections={handleClearAllSelections}
-                onToggleMaximize={() => toggleMaximize('local')}
-                isMaximized={maximizedPanel === 'local'}
-              />
+            <div style={maximizedPanel === 'local' ? { ...maximizedStyle, display: 'flex' } : panelStyle}>
+              <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
+                <Local_View
+                  selectedRegionsData={selectedRegionsData}
+                  channels={channels}
+                  onRemoveSelection={handleRemoveSelection}
+                  onClearAllSelections={handleClearAllSelections}
+                  onToggleMaximize={() => toggleMaximize('local')}
+                  isMaximized={maximizedPanel === 'local'}
+                />
+              </div>
+              {maximizedPanel === 'local' && <ExpandedAgentDock />}
             </div>
             {/* Graph Panel */}
-            <div style={maximizedPanel === 'graph' ? maximizedStyle : panelStyle}>
-              <Graph_Pannel
-                key={selectedRegionsData.map(r => r.id).join('-') || 'empty'}
-                selectedRegionsData={selectedRegionsData}
-                channels={channels}
-                selectedRegions={selectedRegions}
-                onToggleMaximize={() => toggleMaximize('graph')}
-                isMaximized={maximizedPanel === 'graph'}
-              />
+            <div style={maximizedPanel === 'graph' ? { ...maximizedStyle, display: 'flex' } : panelStyle}>
+              <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
+                <Graph_Pannel
+                  key={selectedRegionsData.map(r => r.id).join('-') || 'empty'}
+                  selectedRegionsData={selectedRegionsData}
+                  channels={channels}
+                  selectedRegions={selectedRegions}
+                  onToggleMaximize={() => toggleMaximize('graph')}
+                  isMaximized={maximizedPanel === 'graph'}
+                />
+              </div>
+              {maximizedPanel === 'graph' && <ExpandedAgentDock />}
             </div>
-            {/* Tissue Intelligence */}
-            <div style={maximizedPanel === 'ai' ? maximizedStyle : panelStyle}>
-              <AI_Analysis
-                selectedRegionsData={selectedRegionsData}
-                channels={channels}
-                selectedRegions={selectedRegions}
-                onToggleMaximize={() => toggleMaximize('ai')}
-                isMaximized={maximizedPanel === 'ai'}
-              />
+            {/* Direction View */}
+            <div style={maximizedPanel === 'direction' ? { ...maximizedStyle, display: 'flex' } : panelStyle}>
+              <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
+                <Direction_view
+                  channels={channels}
+                  onToggleMaximize={() => toggleMaximize('direction')}
+                  isMaximized={maximizedPanel === 'direction'}
+                />
+              </div>
+              {maximizedPanel === 'direction' && <ExpandedAgentDock />}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Floating Tissue Intelligence window + global Settings (portal-rendered) */}
+      {!maximizedPanel && <TissueIntelligenceWindow />}
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
+    </TissueIntelligenceProvider>
+    </AgentActionsProvider>
   );
 }
 
