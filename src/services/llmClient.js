@@ -1,8 +1,7 @@
-// Provider-aware LLM client for Tissue Intelligence.
+// Local LLM client for Tissue Intelligence.
 //
-// Dispatches on the active provider in llmConfig:
-//   - 'gemini'  → Google Generative Language API (SSE)
-//   - 'local'   → any OpenAI-compatible /chat/completions endpoint (SSE)
+// Talks to a local OpenAI-compatible /chat/completions endpoint (Ollama,
+// LM Studio, llama.cpp, vLLM, LocalAI...) over SSE. There is no cloud provider.
 //
 // Two entry points share one low-level streamer:
 //   - streamAnalysis(): the structured, sectioned report for an opened context
@@ -12,9 +11,17 @@
 // ever explains numbers the deterministic engines already computed.
 
 import { getConfig } from './llmConfig.js';
-import { buildToolCatalogPrompt } from './agentTools.js';
+import { buildToolCatalogPrompt, buildOpenAITools } from './agentTools.js';
 
-export { AVAILABLE_MODELS } from './llmConfig.js';
+// Normalize a native tool call back into the text action-block format the rest
+// of the pipeline understands (parser → validate → allowlist → confirm → loop).
+const toActionBlock = (name, args) =>
+  `\n\`\`\`action\n${JSON.stringify({ tool: name, args: args || {} })}\n\`\`\`\n`;
+
+// Capability routing: native tool-calling is OFF by default — local model tool
+// support (gpt-oss/Ollama/llama.cpp) is inconsistent, so the text action-block
+// protocol is the reliable path. Opt in via cfg.nativeTools = 'on'.
+const nativeEnabled = (cfg) => cfg?.nativeTools === 'on';
 
 const fmt = (v) => (typeof v === 'number' ? v.toFixed(2) : 'n/a');
 const fmtPct = (p) => `${Math.round(p * 100)}%`;
@@ -185,63 +192,7 @@ const pumpSSE = async (response, onPayload) => {
   }
 };
 
-const streamGemini = async ({ cfg, system, messages, onToken, signal }) => {
-  const { apiKey, model } = cfg.gemini;
-  if (!apiKey) throw new Error('No Gemini API key set. Open Settings and paste your key.');
-
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent` +
-    `?alt=sse&key=${encodeURIComponent(apiKey)}`;
-
-  const contents = messages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }]
-  }));
-
-  let response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal,
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents,
-        generationConfig: { temperature: 0.3 }
-      })
-    });
-  } catch (err) {
-    if (err.name === 'AbortError') throw err;
-    throw new Error('Network error reaching Gemini. Check your connection.');
-  }
-
-  if (!response.ok) {
-    let detail = '';
-    try {
-      const errJson = await response.json();
-      detail = errJson?.error?.message || '';
-    } catch {
-      detail = await response.text().catch(() => '');
-    }
-    if (response.status === 400 || response.status === 403) {
-      throw new Error(`Gemini rejected the request (${response.status}). Check the API key in Settings. ${detail}`);
-    }
-    if (response.status === 429) throw new Error('Rate limited or quota exceeded (429). ' + detail);
-    throw new Error(`Gemini request failed (${response.status}). ${detail}`);
-  }
-
-  await pumpSSE(response, (payload) => {
-    try {
-      const json = JSON.parse(payload);
-      const parts = json?.candidates?.[0]?.content?.parts;
-      if (Array.isArray(parts)) parts.forEach((p) => p?.text && onToken(p.text));
-    } catch {
-      // ignore keep-alive / partial chunks
-    }
-  });
-};
-
-const streamLocal = async ({ cfg, system, messages, onToken, signal }) => {
+const streamLocal = async ({ cfg, system, messages, onToken, signal, tools = null }) => {
   const { baseUrl, model, apiKey } = cfg.local;
   if (!baseUrl || !model) throw new Error('Local model not configured. Set a base URL and model name in Settings.');
 
@@ -259,7 +210,8 @@ const streamLocal = async ({ cfg, system, messages, onToken, signal }) => {
         model,
         stream: true,
         temperature: 0.3,
-        messages: [{ role: 'system', content: system }, ...messages]
+        messages: [{ role: 'system', content: system }, ...messages],
+        ...(tools ? { tools, tool_choice: 'auto' } : {})
       })
     });
   } catch (err) {
@@ -272,21 +224,55 @@ const streamLocal = async ({ cfg, system, messages, onToken, signal }) => {
     throw new Error(`Local model request failed (${response.status}). ${detail}`);
   }
 
+  // Accumulate streamed tool_calls (arguments arrive as partial JSON fragments).
+  const toolAcc = []; // index -> { name, args }
   await pumpSSE(response, (payload) => {
     try {
       const json = JSON.parse(payload);
-      const delta = json?.choices?.[0]?.delta?.content;
-      if (delta) onToken(delta);
+      const delta = json?.choices?.[0]?.delta;
+      if (delta?.content) onToken(delta.content);
+      if (Array.isArray(delta?.tool_calls)) {
+        delta.tool_calls.forEach((tc) => {
+          const i = tc.index ?? 0;
+          toolAcc[i] = toolAcc[i] || { name: '', args: '' };
+          if (tc.function?.name) toolAcc[i].name = tc.function.name;
+          if (tc.function?.arguments) toolAcc[i].args += tc.function.arguments;
+        });
+      }
     } catch {
       // ignore partial chunks
     }
   });
+
+  // Flush accumulated native tool calls as text action blocks.
+  toolAcc.forEach((tc) => {
+    if (!tc?.name) return;
+    let args = {};
+    try { args = tc.args ? JSON.parse(tc.args) : {}; } catch { /* leave empty on bad JSON */ }
+    onToken(toActionBlock(tc.name, args));
+  });
 };
 
-const streamCompletion = ({ system, messages, onToken, signal }) => {
+const streamCompletion = async ({ system, messages, onToken, signal, withTools = false }) => {
   const cfg = getConfig();
-  const args = { cfg, system, messages, onToken, signal };
-  return cfg.provider === 'local' ? streamLocal(args) : streamGemini(args);
+  const tools = withTools && nativeEnabled(cfg) ? buildOpenAITools() : null;
+
+  if (!tools) return streamLocal({ cfg, system, messages, onToken, signal, tools: null });
+
+  // Capability fallback: if the local server rejects the tools request before
+  // streaming, retry once with the text protocol. The retry is safe because a
+  // pre-stream rejection emits no tokens.
+  let emitted = false;
+  const guardedOnToken = (t) => { emitted = true; onToken(t); };
+  try {
+    return await streamLocal({ cfg, system, messages, onToken: guardedOnToken, signal, tools });
+  } catch (err) {
+    if (err.name === 'AbortError' || emitted) throw err;
+    if (/tool|function|400/i.test(err.message || '')) {
+      return streamLocal({ cfg, system, messages, onToken, signal, tools: null });
+    }
+    throw err;
+  }
 };
 
 // --- public API ------------------------------------------------------------
@@ -313,10 +299,17 @@ export const streamAnalysis = ({ kind, grounding, onToken, signal }) =>
  * @param {string} p.grounding - the active context this thread is about
  * @param {Array<{title:string,kind:string,grounding:string}>} [p.peers] - other open contexts, available for cross-region comparison
  */
-export const composeChatSystem = ({ kind, grounding, peers = [], systemState = '' }) => {
+export const composeChatSystem = ({ kind, grounding, peers = [], systemState = '', title = '' }) => {
+  const label = title || 'the current context';
   let system =
     `${CHAT_SYSTEM[kind] || CHAT_SYSTEM.region}\n\n` +
-    `=== GROUNDING DATA (the active context this thread is about) ===\n${grounding}`;
+    `=== THIS CONVERSATION IS ABOUT: ${label} ===\n` +
+    `The GROUNDING DATA below is the numbers for ${label}; treat ${label} as the current/primary context. ` +
+    `Other regions or boxes appear ONLY under OTHER OPEN CONTEXTS and must be referred to by their own names — ` +
+    `do not fetch or re-request data you already have here. Any "active box/tab" mentioned in CURRENT APP STATE ` +
+    `refers to the viewer's selected tab and may differ from ${label}; ${label} is the subject of this conversation ` +
+    `unless the user explicitly names another.\n\n` +
+    `=== GROUNDING DATA (${label}) ===\n${grounding}`;
 
   if (systemState) {
     system +=
@@ -348,10 +341,11 @@ export const composeChatSystem = ({ kind, grounding, peers = [], systemState = '
  * @param {Array<{title:string,kind:string,grounding:string}>} [p.peers] - other open contexts, available for cross-region comparison
  * @param {Array<{role:'user'|'assistant',content:string}>} p.messages - prior turns
  */
-export const streamChat = ({ kind, grounding, peers = [], systemState = '', messages, onToken, signal }) =>
+export const streamChat = ({ kind, grounding, peers = [], systemState = '', title = '', messages, onToken, signal }) =>
   streamCompletion({
-    system: composeChatSystem({ kind, grounding, peers, systemState }),
+    system: composeChatSystem({ kind, grounding, peers, systemState, title }),
     messages,
     onToken,
-    signal
+    signal,
+    withTools: true
   });
