@@ -10,6 +10,8 @@
     "build": "npx vite build",
     "preview": "npx vite preview",
     "test": "node --test",
+    "eval": "node src/eval/run.js",
+    "eval:live": "node src/eval/run-live.js",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
