@@ -19,9 +19,11 @@ export const createActionRegistry = () => {
     }
     try {
       const out = (await fn(args)) || {};
-      return { ok: true, message: out.message || `Ran ${tool}.`, undo: out.undo || null };
+      // `detail` carries rich read-tool output to the model (via the agent loop's
+      // observation) without bloating the short UI chip in `message`.
+      return { ok: true, message: out.message || `Ran ${tool}.`, undo: out.undo || null, detail: out.detail || null };
     } catch (err) {
-      return { ok: false, message: err.message || `Failed to run ${tool}.`, undo: null };
+      return { ok: false, message: err.message || `Failed to run ${tool}.`, undo: null, detail: null };
     }
   };
 
