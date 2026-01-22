@@ -3,6 +3,7 @@
 
 import React, { createContext, useContext, useRef, useMemo } from 'react';
 import { createActionRegistry } from './actionRegistry.js';
+import { validateToolCall } from './agentTools.js';
 
 const AgentActionsContext = createContext(null);
 
@@ -26,7 +27,16 @@ export function AgentActionsProvider({ children }) {
     return {
       registerActions: (map) => reg.register(map),
       unregisterActions: (names) => reg.unregister(names),
-      runAction: (tool, args) => reg.run(tool, args),
+      // Validate + coerce args against the catalog schema BEFORE dispatch. This
+      // is the central defense layer: unknown tools and bad/injected args are
+      // rejected here and never reach an executor.
+      runAction: (tool, args) => {
+        const { ok, errors, args: safeArgs } = validateToolCall(tool, args);
+        if (!ok) {
+          return Promise.resolve({ ok: false, message: `Rejected ${tool}: ${errors.join('; ')}`, undo: null });
+        }
+        return reg.run(tool, safeArgs);
+      },
       hasAction: (tool) => reg.has(tool),
       registerState: (key, getter) => { stateRef.current[key] = getter; },
       unregisterState: (key) => { delete stateRef.current[key]; },
