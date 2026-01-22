@@ -264,14 +264,15 @@ function App() {
         <Title softwareName="Melanoma Tissue Volumes" onOpenSettings={openSettings} />
       </div>
 
-      {/* Main Content Area - 90.5% height, 100% width */}
+      {/* Main Content Area — fills the space below the title (flex:1 so Title +
+          content never exceed 100vh and clip the bottom of maximized panels). */}
       <div style={{
-        height: '100%',
+        flex: 1,
+        minHeight: 0,
         width: '100%',
         display: 'flex',
         overflow: 'hidden',
-        boxSizing: 'border-box',
-        flexShrink: 0
+        boxSizing: 'border-box'
       }}>
         {/* Left Sidebar - 100% of main content height, 21% width */}
         <div style={{
@@ -361,11 +362,12 @@ function App() {
                   channels={channels}
                   onRemoveSelection={handleRemoveSelection}
                   onClearAllSelections={handleClearAllSelections}
+                  onRestoreSelections={setSelectedRegionsData}
                   onToggleMaximize={() => toggleMaximize('local')}
                   isMaximized={maximizedPanel === 'local'}
                 />
               </div>
-              {maximizedPanel === 'local' && <ExpandedAgentDock />}
+              {maximizedPanel === 'local' && <ExpandedAgentDock panel="local" onMaximizePanel={setMaximizedPanel} />}
             </div>
             {/* Graph Panel */}
             <div style={maximizedPanel === 'graph' ? { ...maximizedStyle, display: 'flex' } : panelStyle}>
@@ -379,7 +381,7 @@ function App() {
                   isMaximized={maximizedPanel === 'graph'}
                 />
               </div>
-              {maximizedPanel === 'graph' && <ExpandedAgentDock />}
+              {maximizedPanel === 'graph' && <ExpandedAgentDock panel="graph" onMaximizePanel={setMaximizedPanel} />}
             </div>
             {/* Direction View */}
             <div style={maximizedPanel === 'direction' ? { ...maximizedStyle, display: 'flex' } : panelStyle}>
@@ -390,7 +392,7 @@ function App() {
                   isMaximized={maximizedPanel === 'direction'}
                 />
               </div>
-              {maximizedPanel === 'direction' && <ExpandedAgentDock />}
+              {maximizedPanel === 'direction' && <ExpandedAgentDock panel="direction" onMaximizePanel={setMaximizedPanel} />}
             </div>
           </div>
         </div>
