@@ -1,11 +1,10 @@
-// Global Settings dialog — the single home for AI model configuration.
-// Replaces the old per-panel Gemini settings. Two providers:
-//   - Gemini (cloud): API key + model
-//   - Local (OpenAI-compatible): base URL + model + optional key
+// Global Settings dialog — local model configuration for Tissue Intelligence.
+// The app talks to a local OpenAI-compatible endpoint (Ollama, LM Studio,
+// llama.cpp, vLLM, LocalAI...). There is no cloud provider.
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { getConfig, setConfig, AVAILABLE_MODELS, DEFAULT_LOCAL_BASE_URL } from '../services/llmConfig';
+import { getConfig, setConfig, DEFAULT_LOCAL_BASE_URL } from '../services/llmConfig';
 
 const fieldStyle = {
   width: '100%', padding: '8px 10px', fontSize: '12px', background: 'var(--bg-1)',
@@ -22,29 +21,8 @@ const SettingsModal = ({ open, onClose }) => {
 
   if (!open) return null;
 
-  const provider = cfg.provider;
-  const patch = (next) => setCfg((c) => ({ ...c, ...next }));
-  const patchGemini = (next) => setCfg((c) => ({ ...c, gemini: { ...c.gemini, ...next } }));
   const patchLocal = (next) => setCfg((c) => ({ ...c, local: { ...c.local, ...next } }));
-
   const save = () => { setConfig(cfg); onClose(); };
-
-  const providerTab = (value, label) => (
-    <button
-      type="button"
-      className="mtv-press"
-      onClick={() => patch({ provider: value })}
-      style={{
-        flex: 1, padding: '8px', fontSize: '12px', fontWeight: 600,
-        color: provider === value ? 'var(--text-1)' : 'var(--text-3)',
-        background: provider === value ? 'var(--accent-soft)' : 'transparent',
-        border: `1px solid ${provider === value ? 'var(--accent)' : 'var(--border)'}`,
-        borderRadius: 'var(--radius-sm)', cursor: 'pointer'
-      }}
-    >
-      {label}
-    </button>
-  );
 
   return createPortal(
     <div
@@ -65,51 +43,27 @@ const SettingsModal = ({ open, onClose }) => {
           <button type="button" className="mtv-press" onClick={onClose} title="Close" style={{ width: '26px', height: '26px', color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>✕</button>
         </div>
 
-        <div style={{ fontSize: '11px', color: 'var(--text-3)', marginBottom: '12px', lineHeight: 1.5 }}>
-          Tissue Intelligence runs entirely in your browser. Choose a model provider below. Keys are stored in this browser's localStorage and are visible to anyone with access to it.
+        <div style={{ fontSize: '11px', color: 'var(--text-3)', marginBottom: '16px', lineHeight: 1.5 }}>
+          Tissue Intelligence runs entirely in your browser against a local, OpenAI-compatible model endpoint. Any key is stored in this browser's localStorage and is visible to anyone with access to it.
         </div>
 
-        <span style={labelStyle}>Provider</span>
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-          {providerTab('gemini', 'Gemini (cloud)')}
-          {providerTab('local', 'Local model')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <span style={labelStyle}>Base URL (OpenAI-compatible)</span>
+            <input type="text" value={cfg.local.baseUrl} onChange={(e) => patchLocal({ baseUrl: e.target.value })} placeholder={DEFAULT_LOCAL_BASE_URL} style={fieldStyle} />
+          </div>
+          <div>
+            <span style={labelStyle}>Model name</span>
+            <input type="text" value={cfg.local.model} onChange={(e) => patchLocal({ model: e.target.value })} placeholder="llama3.1, qwen2.5, gpt-oss…" style={fieldStyle} />
+          </div>
+          <div>
+            <span style={labelStyle}>API key (optional)</span>
+            <input type="password" value={cfg.local.apiKey} onChange={(e) => patchLocal({ apiKey: e.target.value })} placeholder="leave blank for Ollama / LM Studio" style={fieldStyle} />
+          </div>
+          <div style={{ fontSize: '10.5px', color: 'var(--text-3)', lineHeight: 1.4 }}>
+            Works with Ollama (<span className="mono">…:11434/v1</span>), LM Studio (<span className="mono">…:1234/v1</span>), llama.cpp, vLLM, LocalAI. The server must allow CORS from this origin.
+          </div>
         </div>
-
-        {provider === 'gemini' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <span style={labelStyle}>Gemini API key</span>
-              <input type="password" value={cfg.gemini.apiKey} onChange={(e) => patchGemini({ apiKey: e.target.value })} placeholder="AIza…" style={fieldStyle} />
-            </div>
-            <div>
-              <span style={labelStyle}>Model</span>
-              <select value={cfg.gemini.model} onChange={(e) => patchGemini({ model: e.target.value })} style={fieldStyle}>
-                {AVAILABLE_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div style={{ fontSize: '10.5px', color: 'var(--text-3)', lineHeight: 1.4 }}>
-              Get a key at <span style={{ color: 'var(--accent)' }}>aistudio.google.com/apikey</span>.
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <span style={labelStyle}>Base URL (OpenAI-compatible)</span>
-              <input type="text" value={cfg.local.baseUrl} onChange={(e) => patchLocal({ baseUrl: e.target.value })} placeholder={DEFAULT_LOCAL_BASE_URL} style={fieldStyle} />
-            </div>
-            <div>
-              <span style={labelStyle}>Model name</span>
-              <input type="text" value={cfg.local.model} onChange={(e) => patchLocal({ model: e.target.value })} placeholder="llama3.1, qwen2.5, mistral…" style={fieldStyle} />
-            </div>
-            <div>
-              <span style={labelStyle}>API key (optional)</span>
-              <input type="password" value={cfg.local.apiKey} onChange={(e) => patchLocal({ apiKey: e.target.value })} placeholder="leave blank for Ollama / LM Studio" style={fieldStyle} />
-            </div>
-            <div style={{ fontSize: '10.5px', color: 'var(--text-3)', lineHeight: 1.4 }}>
-              Works with Ollama (<span className="mono">…:11434/v1</span>), LM Studio (<span className="mono">…:1234/v1</span>), llama.cpp, vLLM, LocalAI. The server must allow CORS from this origin.
-            </div>
-          </div>
-        )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
           <button type="button" className="mtv-press" onClick={onClose} style={{ padding: '8px 14px', fontSize: '12px', fontWeight: 600, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>Cancel</button>
