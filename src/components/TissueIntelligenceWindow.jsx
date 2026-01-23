@@ -9,7 +9,7 @@ import TissueChatView from './TissueChatView';
 const MIN_W = 320;
 const MIN_H = 320;
 
-const GeminiSpark = ({ size = 16 }) => {
+const AiSpark = ({ size = 16 }) => {
   const id = useId();
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }} aria-hidden="true">
@@ -111,7 +111,7 @@ const TissueIntelligenceWindow = () => {
             cursor: 'grab', userSelect: 'none', flexShrink: 0
           }}
         >
-          <GeminiSpark size={16} />
+          <AiSpark size={16} />
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '13px', color: 'var(--text-1)' }}>
             Tissue Intelligence
           </span>
