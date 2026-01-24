@@ -9,7 +9,7 @@
 import React, { useId } from 'react';
 import { useTissueIntelligence } from '../services/tissueIntelligenceContext';
 
-const GeminiSpark = ({ size = 16 }) => {
+const AiSpark = ({ size = 16 }) => {
   const gradId = useId();
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(120,90,200,0.55))', flexShrink: 0 }} aria-hidden="true">
@@ -25,7 +25,7 @@ const GeminiSpark = ({ size = 16 }) => {
   );
 };
 
-const AskTissueButton = ({ descriptor, variant = 'chip', disabled = false, label = 'Ask AI', title = 'Ask Tissue Intelligence' }) => {
+const AskTissueButton = ({ descriptor, variant = 'chip', disabled = false, label = 'Ask TI', title = 'Ask Tissue Intelligence' }) => {
   const { open } = useTissueIntelligence();
 
   const handleClick = (e) => {
@@ -57,7 +57,7 @@ const AskTissueButton = ({ descriptor, variant = 'chip', disabled = false, label
         onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.borderColor = 'rgba(145,104,192,0.8)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
       >
-        <GeminiSpark size={16} />
+        <AiSpark size={16} />
       </button>
     );
   }
@@ -84,7 +84,7 @@ const AskTissueButton = ({ descriptor, variant = 'chip', disabled = false, label
       onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(145,104,192,0.22)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(145,104,192,0.12)'; }}
     >
-      <GeminiSpark size={13} />
+      <AiSpark size={13} />
       {label}
     </button>
   );
