@@ -330,13 +330,18 @@ const Region_Selection = ({ onToggleRegion, selectedRegions = [] }) => {
         return { message: `Switched to ${mode} region mode`, undo: () => setActiveTab(prev) };
       },
       resetRegions: () => {
-        const prev = selectedRegionsRef.current;
-        prev.forEach((region) => {
-          const def = REGION_DEFINITIONS.find((r) => r.id === region.id) ||
-            REGION_DEFINITIONS.find((r) => region.id?.startsWith(r.id));
-          if (def) onToggleRegion({ regionPayload: buildRegionPayload(def), shouldSelect: false });
-        });
-        return { message: 'Cleared region selections' };
+        const defs = (selectedRegionsRef.current || [])
+          .map((region) =>
+            REGION_DEFINITIONS.find((r) => r.id === region.id) ||
+            REGION_DEFINITIONS.find((r) => region.id?.startsWith(r.id)))
+          .filter(Boolean);
+        defs.forEach((def) => onToggleRegion({ regionPayload: buildRegionPayload(def), shouldSelect: false }));
+        return {
+          message: 'Cleared region selections',
+          undo: defs.length
+            ? () => defs.forEach((def) => onToggleRegion({ regionPayload: buildRegionPayload(def), shouldSelect: true }))
+            : null
+        };
       }
     });
 
