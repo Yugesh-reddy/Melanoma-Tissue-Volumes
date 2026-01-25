@@ -111,12 +111,16 @@ const SUGGESTIONS = {
 // TissueChatView
 // ---------------------------------------------------------------------------
 
-const TissueChatView = ({ style }) => {
+const TissueChatView = ({ style, onSelectContext }) => {
   const {
     threads, threadOrder, activeThread, activeContextId,
-    setActive, removeThread, sendMessage, retryAnalysis, openSettings, undoAction
+    setActive, removeThread, sendMessage, retryAnalysis, openSettings, undoAction,
+    confirmAction, cancelAction
   } = useTissueIntelligence();
 
+  // In the expanded dock, selecting a context also shifts the maximized panel;
+  // elsewhere (the floating window) it just switches the active thread.
+  const selectContext = onSelectContext || setActive;
   const configured = isConfigured();
   const [draft, setDraft] = useState('');
 
@@ -143,7 +147,7 @@ const TissueChatView = ({ style }) => {
                 <button
                   type="button"
                   className="mtv-press"
-                  onClick={() => setActive(id)}
+                  onClick={() => selectContext(id)}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: '5px',
                     padding: '3px 8px', fontSize: '11px', fontWeight: active ? 600 : 500,
@@ -169,7 +173,7 @@ const TissueChatView = ({ style }) => {
       )}
 
       {/* Body */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {!activeThread ? (
           <div style={{ color: 'var(--text-3)', fontSize: '12px' }}>Open a context to begin.</div>
         ) : (
@@ -218,31 +222,39 @@ const TissueChatView = ({ style }) => {
                   {m.role === 'assistant' ? (
                     <>
                       <MarkdownLite text={m.content || '…'} />
-                      {Array.isArray(m.actions) && m.actions.map((a, ai) => (
-                        <div key={ai} style={{
-                          display: 'flex', alignItems: 'center', gap: '8px',
-                          marginTop: '6px', padding: '4px 8px', borderRadius: '6px',
-                          fontSize: '11px',
-                          background: a.ok ? 'rgba(74,222,128,0.12)' : 'rgba(255,100,100,0.12)',
-                          border: `1px solid ${a.ok ? 'rgba(74,222,128,0.4)' : 'rgba(255,100,100,0.4)'}`,
-                          color: 'var(--text-1)'
-                        }}>
-                          <span>{a.ok ? '✓' : '⚠'} {a.message}</span>
-                          {a.undoId && (
-                            <button
-                              onClick={() => undoAction(a.undoId)}
-                              style={{
-                                marginLeft: 'auto', cursor: 'pointer', fontSize: '11px',
-                                background: 'transparent', color: 'var(--accent)',
-                                border: '1px solid var(--border)', borderRadius: '4px',
-                                padding: '1px 8px'
-                              }}
-                            >
-                              Undo
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                      {Array.isArray(m.actions) && m.actions.map((a, ai) => {
+                        const pending = a.pending;
+                        const accent = pending ? 'rgba(250,204,21,0.5)' : a.ok ? 'rgba(74,222,128,0.4)' : 'rgba(255,100,100,0.4)';
+                        const bg = pending ? 'rgba(250,204,21,0.12)' : a.ok ? 'rgba(74,222,128,0.12)' : 'rgba(255,100,100,0.12)';
+                        return (
+                          <div key={ai} style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            marginTop: '6px', padding: '4px 8px', borderRadius: '6px',
+                            fontSize: '11px', background: bg, border: `1px solid ${accent}`, color: 'var(--text-1)'
+                          }}>
+                            <span>{pending ? '⚠' : a.ok ? '✓' : '⚠'} {a.message}</span>
+                            {pending && (
+                              <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+                                <button onClick={() => confirmAction(a.confirmId)} style={{ cursor: 'pointer', fontSize: '11px', color: '#fff', background: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: '4px', padding: '1px 8px' }}>Proceed</button>
+                                <button onClick={() => cancelAction(a.confirmId)} style={{ cursor: 'pointer', fontSize: '11px', color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', padding: '1px 8px' }}>Cancel</button>
+                              </span>
+                            )}
+                            {!pending && a.undoId && (
+                              <button
+                                onClick={() => undoAction(a.undoId)}
+                                style={{
+                                  marginLeft: 'auto', cursor: 'pointer', fontSize: '11px',
+                                  background: 'transparent', color: 'var(--accent)',
+                                  border: '1px solid var(--border)', borderRadius: '4px',
+                                  padding: '1px 8px'
+                                }}
+                              >
+                                Undo
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </>
                   ) : m.content}
                 </div>
