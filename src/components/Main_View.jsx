@@ -84,7 +84,7 @@ const getConfigSignature = (config) =>
   ].join('|');
 
 const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initialSelectionBounds, selectedRegionsData = [] }) => {
-  const { openGeneral } = useTissueIntelligence();
+  const { isOpen: isTissueIntelligenceOpen, openGeneral } = useTissueIntelligence();
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -2124,42 +2124,44 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
       </button>
 
       {/* Tissue Intelligence launcher — opens the general, app-wide AI assistant */}
-      <button
-        type="button"
-        className="mtv-press"
-        onClick={() => openGeneral()}
-        style={{
-          position: 'absolute',
-          top: '12px',
-          right: '160px',
-          zIndex: 1000,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '7px',
-          padding: '8px 14px',
-          background: 'rgba(16,18,24,0.72)',
-          color: 'var(--text-1)',
-          border: '1px solid var(--border)',
-          borderRadius: '9px',
-          cursor: 'pointer',
-          fontSize: '13px',
-          fontFamily: 'var(--font-display)',
-          fontWeight: 600,
-          letterSpacing: '0.2px',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-          transition: 'border-color 180ms var(--ease-out), background 180ms var(--ease-out), transform 140ms var(--ease-out)'
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(145,104,192,0.85)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
-        title="Open Tissue Intelligence"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ filter: 'drop-shadow(0 0 3px rgba(120,90,200,0.55))' }}>
-          <path d="M12 0c0 6.627 5.373 12 12 12-6.627 0-12 5.373-12 12 0-6.627-5.373-12-12-12 6.627 0 12-5.373 12-12z" fill="#9168C0" />
-        </svg>
-        Tissue Intelligence
-      </button>
+      {!isTissueIntelligenceOpen && (
+        <button
+          type="button"
+          className="mtv-press"
+          onClick={() => openGeneral()}
+          style={{
+            position: 'absolute',
+            top: '12px',
+            right: '160px',
+            zIndex: 1000,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '7px',
+            padding: '8px 14px',
+            background: 'rgba(16,18,24,0.72)',
+            color: 'var(--text-1)',
+            border: '1px solid var(--border)',
+            borderRadius: '9px',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 600,
+            letterSpacing: '0.2px',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+            transition: 'border-color 180ms var(--ease-out), background 180ms var(--ease-out), transform 140ms var(--ease-out)'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(145,104,192,0.85)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+          title="Open Tissue Intelligence"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ filter: 'drop-shadow(0 0 3px rgba(120,90,200,0.55))' }}>
+            <path d="M12 0c0 6.627 5.373 12 12 12-6.627 0-12 5.373-12 12 0-6.627-5.373-12-12-12 6.627 0 12-5.373 12-12z" fill="#9168C0" />
+          </svg>
+          Tissue Intelligence
+        </button>
+      )}
 
       {/* Reset View Button - Bottom Right - Consistent with Region_Selection */}
       <button
@@ -2324,4 +2326,3 @@ const Main_View = ({ channels = [], activeRegions = [], onSelectionChange, initi
 };
 
 export default Main_View;
-
