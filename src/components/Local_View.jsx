@@ -23,6 +23,12 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
   const voxelMeshesRef = useRef([]);
   const boundingBoxRef = useRef(null);
   const axesHelperRef = useRef(null);
+  // Incremental rendering: track each channel's mesh + config signature so we
+  // only (re)build what actually changed, instead of disposing and reloading
+  // every marker on each channel/region change.
+  const channelMeshesRef = useRef(new Map()); // channelIndex -> { mesh, signature }
+  const regionCtxRef = useRef(null);          // cached bounding-box / scaling / centerOffset per region
+  const renderTokenRef = useRef(0);           // bumped each run to cancel superseded async builds
 
   // State for UI display
   const [cellCount, setCellCount] = useState(0);
@@ -291,322 +297,213 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
 
   // Create visualization from selected region data
   // channelsOverride: optional array of current channel configs to use instead of stored channels
+  // Signature of a channel's visual config — if these are unchanged, the mesh
+  // is identical, so we keep it instead of disposing and rebuilding.
+  const channelSignature = (c) =>
+    [c.thresholdMin ?? '', c.thresholdMax ?? '', c.color ?? '', c.opacity ?? '', c.visible !== false].join('|');
+
+  // Signature of a region's geometry — changes only when the region itself does.
+  const regionSignature = (region) => {
+    const b = region?.bounds;
+    return b ? [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].join(',') : '';
+  };
+
+  // Incremental per-region renderer. Builds only channels that are new or whose
+  // config changed, and leaves unchanged markers untouched — so toggling a
+  // channel or selecting another region never makes existing markers disappear
+  // or reload. Bounding box / axes / camera framing are computed once per region.
   const createLocalVisualization = async (selectedData, channelsOverride = null) => {
-    if (!sceneRef.current || !selectedData || !selectedData.bounds) {
-      console.log('Local_View: Invalid selected data', selectedData);
-      return;
-    }
-
-    // Use current channels (channelsOverride) as the source of truth
-    // This ensures that any globally selected/visible channel is shown in the local view,
-    // regardless of whether it was active when the region was originally selected.
-    // CRITICAL: Always prefer channelsOverride (live state) over selectedData.channels (stale state)
-    let channelsToUse = channelsOverride && channelsOverride.length > 0 ? channelsOverride : selectedData.channels;
-
-    // If no current channels provided (shouldn't happen in normal flow), fallback to stored channels
-    if (!channelsToUse || channelsToUse.length === 0) {
-      console.log('Local_View: No current channels provided, falling back to stored channels');
-      channelsToUse = selectedData.channels || [];
-    }
-
-    console.log(`Local_View: Using ${channelsToUse.length} channel(s) for visualization`);
-
-    if (channelsToUse.length === 0) {
-      console.log('Local_View: No channels available');
-      // Clear scene if no channels
-      voxelMeshesRef.current.forEach(mesh => {
-        sceneRef.current.remove(mesh);
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (mesh.material) mesh.material.dispose();
-      });
-      voxelMeshesRef.current = [];
-      setCellCount(0);
-      return;
-    }
-
-    // Filter to only visible channels
-    const visibleChannels = channelsToUse.filter(c => c.visible !== false);
-    if (visibleChannels.length === 0) {
-      console.log('Local_View: No visible channels');
-      // Clear scene if no visible channels
-      voxelMeshesRef.current.forEach(mesh => {
-        sceneRef.current.remove(mesh);
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (mesh.material) mesh.material.dispose();
-      });
-      voxelMeshesRef.current = [];
-      setCellCount(0);
-      return;
-    }
-
-    console.log('Local_View: Creating visualization for selected region', selectedData);
-    console.log(`Local_View: Using ${visibleChannels.length} visible channel(s) (${channelsOverride ? 'current' : 'stored'} channels)`);
-
     const scene = sceneRef.current;
+    if (!scene || !selectedData || !selectedData.bounds) return;
 
-    // Clear existing meshes
-    // Clear existing meshes - ROBUST CLEANUP
-    // Iterate backwards to safely remove
-    for (let i = scene.children.length - 1; i >= 0; i--) {
-      const child = scene.children[i];
-      // Remove meshes and helpers, but keep lights
-      if (child.isMesh || child.isLineSegments || child.isAxesHelper) {
-        scene.remove(child);
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) child.material.dispose();
-      }
-    }
-    voxelMeshesRef.current = [];
-    boundingBoxRef.current = null;
-    axesHelperRef.current = null;
+    let channelsToUse = channelsOverride && channelsOverride.length > 0 ? channelsOverride : selectedData.channels;
+    if (!channelsToUse || channelsToUse.length === 0) channelsToUse = selectedData.channels || [];
+    const visibleChannels = (channelsToUse || []).filter((c) => c.visible !== false);
 
-    // Remove existing bounding box
-    if (boundingBoxRef.current) {
-      scene.remove(boundingBoxRef.current);
-      if (boundingBoxRef.current.geometry) boundingBoxRef.current.geometry.dispose();
-      if (boundingBoxRef.current.material) boundingBoxRef.current.material.dispose();
-      boundingBoxRef.current = null;
-    }
+    const channelMeshes = channelMeshesRef.current;
+    const token = ++renderTokenRef.current; // any newer run supersedes this one
 
-    // Remove existing axes helper
-    if (axesHelperRef.current) {
-      scene.remove(axesHelperRef.current);
-      axesHelperRef.current = null;
-    }
+    const dropMesh = (mesh) => {
+      if (!mesh) return;
+      if (scene.children.includes(mesh)) scene.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) mesh.material.dispose();
+    };
+    const renderNow = () => {
+      if (rendererRef.current && cameraRef.current) rendererRef.current.render(scene, cameraRef.current);
+    };
+    const syncState = () => {
+      const meshes = Array.from(channelMeshes.values()).map((e) => e.mesh).filter(Boolean);
+      voxelMeshesRef.current = meshes;
+      setCellCount(meshes.reduce((sum, m) => sum + (m.geometry?.instanceCount || 0), 0));
+    };
 
-    const { bounds, scaling } = selectedData;
-
-    // Find a reference channel with loaded data to calculate bounding box
-    let referenceChannelConfig = null;
-    let referenceData = null;
-
-    for (const channelConfig of visibleChannels) {
-      try {
-        const data = await loadChannelData(channelConfig.channelIndex);
-        if (data) {
-          referenceChannelConfig = channelConfig;
-          referenceData = data;
-          break; // Found a valid reference
-        }
-      } catch (err) {
-        console.warn(`Local_View: Failed to load channel ${channelConfig.channelIndex} for reference`, err);
-      }
-    }
-
-    if (!referenceData) {
-      console.warn('Local_View: Failed to load data for ANY visible channel - cannot create visualization');
+    // No visible channels → remove all channel meshes (keep the box for the region).
+    if (visibleChannels.length === 0) {
+      channelMeshes.forEach((e) => dropMesh(e.mesh));
+      channelMeshes.clear();
+      syncState();
+      renderNow();
       return;
     }
 
-    const { metadata: firstMetadata } = referenceData;
-    const [zSize, ySize, xSize] = firstMetadata.shape;
-
-    // Use scaling factors from Main_View if available to maintain exact 3D positions
-    let scaleXData, scaleYData, scaleZData;
-    if (scaling) {
-      scaleXData = scaling.scaleX;
-      scaleYData = scaling.scaleY;
-      scaleZData = scaling.scaleZ;
-      console.log('Local_View: Using scaling factors from Main_View for bounding box');
-    } else {
-      const maxDimData = Math.max(zSize, ySize, xSize);
-      scaleXData = xSize / maxDimData;
-      scaleYData = ySize / maxDimData;
-      scaleZData = (zSize / maxDimData) / 4;
-      console.log('Local_View: Calculated scaling factors for bounding box');
-    }
-
-    // Calculate bounding box size in normalized coordinates
-    const boundsWidth = bounds.max.x - bounds.min.x + 1;
-    const boundsHeight = bounds.max.y - bounds.min.y + 1;
-    const boundsDepth = bounds.max.z - bounds.min.z + 1;
-
-    // Calculate center in normalized coordinates (same as Main_View)
-    const boundsCenterX = (bounds.min.x + bounds.max.x) / 2;
-    const boundsCenterY = (bounds.min.y + bounds.max.y) / 2;
-    const boundsCenterZ = (bounds.min.z + bounds.max.z) / 2;
-
-    const boxCenter = {
-      x: -((boundsCenterX / xSize) * 2 - 1) * scaleXData, // Flip X center too
-      y: ((boundsCenterY / ySize) * 2 - 1) * scaleYData,
-      z: ((boundsCenterZ / zSize) * 2 - 1) * scaleZData
-    };
-
-    // Calculate bounding box size in normalized space (exact same calculation as Main_View)
-    const boxSize = {
-      x: (boundsWidth / xSize) * 2 * scaleXData,
-      y: (boundsHeight / ySize) * 2 * scaleYData,
-      z: (boundsDepth / zSize) * 2 * scaleZData
-    };
-
-    console.log('Local_View: Bounding box center', boxCenter, 'size', boxSize);
-    console.log('Local_View: Bounds dimensions (voxels)', boundsWidth, boundsHeight, boundsDepth);
-    console.log('Local_View: Using exact same scaling as Main_View - maintaining 1:1 spatial scale');
-
-    const boxGeometry = new THREE.BoxGeometry(boxSize.x, boxSize.y, boxSize.z);
-    const boxEdges = new THREE.EdgesGeometry(boxGeometry);
-    const boxMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
-    const boxWireframe = new THREE.LineSegments(boxEdges, boxMaterial);
-    boxWireframe.position.set(boxCenter.x, boxCenter.y, boxCenter.z);
-    scene.add(boxWireframe);
-    boundingBoxRef.current = boxWireframe;
-
-    // Create voxel meshes for each channel
-    // Pass scaling factors to maintain exact 3D positions
-    let meshCount = 0;
-    let totalCellCount = 0;
-
-    // Calculate center offset BEFORE creating meshes so we can adjust positions
-    // Use the same center calculation as boxCenter
-    const centerOffset = {
-      x: boxCenter.x,
-      y: boxCenter.y,
-      z: boxCenter.z
-    };
-
-    console.log(`Local_View: Center offset to apply: (${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
-
-    console.log(`Local_View: Processing ${visibleChannels.length} visible channel(s)`);
-    for (const channelConfig of visibleChannels) {
-      try {
-        console.log(`Local_View: Loading channel ${channelConfig.channelIndex}...`);
-        const channelData = await loadChannelData(channelConfig.channelIndex);
-        if (!channelData) {
-          console.warn(`Local_View: Failed to load channel ${channelConfig.channelIndex}`);
-          continue;
-        }
-        console.log(`Local_View: Channel ${channelConfig.channelIndex} loaded, creating visualization...`);
-
-        const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
-        if (mesh) {
-          console.log(`Local_View: Mesh created for channel ${channelConfig.channelIndex}, adding to scene...`);
-
-          // Ensure mesh is visible and properly configured
-          mesh.visible = true;
-          mesh.frustumCulled = false;
-
-          scene.add(mesh);
-          voxelMeshesRef.current.push(mesh);
-          meshCount++;
-          totalCellCount += mesh.geometry.instanceCount;
-          console.log(`Local_View: ✓ Added mesh for channel ${channelConfig.channelIndex} with ${mesh.geometry.instanceCount} instances`);
-          console.log(`Local_View: Mesh position:`, mesh.position);
-          console.log(`Local_View: Mesh visible:`, mesh.visible);
-          console.log(`Local_View: Mesh in scene:`, scene.children.includes(mesh));
-        } else {
-          console.warn(`Local_View: ✗ No mesh created for channel ${channelConfig.channelIndex} (no points in bounds)`);
-        }
-      } catch (error) {
-        console.error(`Local_View: Error processing channel ${channelConfig.channelIndex}:`, error);
-        console.error(`Local_View: Error stack:`, error.stack);
+    // --- Region geometry: build once per region -----------------------------
+    const regionSig = regionSignature(selectedData);
+    if (!regionCtxRef.current || regionCtxRef.current.regionSig !== regionSig) {
+      // Region changed: drop everything tied to the previous region.
+      channelMeshes.forEach((e) => dropMesh(e.mesh));
+      channelMeshes.clear();
+      if (boundingBoxRef.current) { dropMesh(boundingBoxRef.current); boundingBoxRef.current = null; }
+      if (axesHelperRef.current) {
+        if (scene.children.includes(axesHelperRef.current)) scene.remove(axesHelperRef.current);
+        axesHelperRef.current = null;
       }
-    }
+      regionCtxRef.current = null;
 
-    // Store cell count for UI display
-    setCellCount(totalCellCount);
+      const { bounds, scaling } = selectedData;
 
-    console.log(`Local_View: Created ${meshCount} meshes`);
+      // Need any one channel's metadata for the volume shape.
+      let referenceData = null;
+      for (const channelConfig of visibleChannels) {
+        try {
+          const data = await loadChannelData(channelConfig.channelIndex);
+          if (token !== renderTokenRef.current) return; // superseded
+          if (data) { referenceData = data; break; }
+        } catch (err) {
+          console.warn(`Local_View: reference load failed for channel ${channelConfig.channelIndex}`, err);
+        }
+      }
+      if (!referenceData) return;
 
-    // Add coordinate axes helper - scale based on bounding box size
-    const axesSize = Math.max(boxSize.x, boxSize.y, boxSize.z) * 0.3;
-    const axesHelper = new THREE.AxesHelper(axesSize);
-    axesHelper.position.set(boxCenter.x, boxCenter.y, boxCenter.z);
-    scene.add(axesHelper);
-    axesHelperRef.current = axesHelper;
+      const [zSize, ySize, xSize] = referenceData.metadata.shape;
+      let scaleXData, scaleYData, scaleZData;
+      if (scaling) {
+        scaleXData = scaling.scaleX; scaleYData = scaling.scaleY; scaleZData = scaling.scaleZ;
+      } else {
+        const maxDimData = Math.max(zSize, ySize, xSize);
+        scaleXData = xSize / maxDimData;
+        scaleYData = ySize / maxDimData;
+        scaleZData = (zSize / maxDimData) / 4;
+      }
 
-    // Geometry is already centered at origin (0,0,0) via centerOffset applied during creation
-    // Center bounding box and axes helper at origin
-    if (boundingBoxRef.current) {
-      boundingBoxRef.current.position.set(0, 0, 0);
-    }
+      const boundsWidth = bounds.max.x - bounds.min.x + 1;
+      const boundsHeight = bounds.max.y - bounds.min.y + 1;
+      const boundsDepth = bounds.max.z - bounds.min.z + 1;
+      const boundsCenterX = (bounds.min.x + bounds.max.x) / 2;
+      const boundsCenterY = (bounds.min.y + bounds.max.y) / 2;
+      const boundsCenterZ = (bounds.min.z + bounds.max.z) / 2;
+      const boxCenter = {
+        x: -((boundsCenterX / xSize) * 2 - 1) * scaleXData,
+        y: ((boundsCenterY / ySize) * 2 - 1) * scaleYData,
+        z: ((boundsCenterZ / zSize) * 2 - 1) * scaleZData
+      };
+      const boxSize = {
+        x: (boundsWidth / xSize) * 2 * scaleXData,
+        y: (boundsHeight / ySize) * 2 * scaleYData,
+        z: (boundsDepth / zSize) * 2 * scaleZData
+      };
 
-    if (axesHelperRef.current) {
-      axesHelperRef.current.position.set(0, 0, 0);
-    }
+      // Bounding box (channel geometry is centered at origin via centerOffset).
+      const boxGeometry = new THREE.BoxGeometry(boxSize.x, boxSize.y, boxSize.z);
+      const boxEdges = new THREE.EdgesGeometry(boxGeometry);
+      const boxMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+      const boxWireframe = new THREE.LineSegments(boxEdges, boxMaterial);
+      boxWireframe.position.set(0, 0, 0);
+      scene.add(boxWireframe);
+      boundingBoxRef.current = boxWireframe;
 
-    // Set camera to look at origin (where geometry is centered)
-    cameraStateRef.current.panOffset = { x: 0, y: 0, z: 0 };
+      const axesSize = Math.max(boxSize.x, boxSize.y, boxSize.z) * 0.3;
+      const axesHelper = new THREE.AxesHelper(axesSize);
+      axesHelper.position.set(0, 0, 0);
+      scene.add(axesHelper);
+      axesHelperRef.current = axesHelper;
 
-    // Calculate camera distance based on ACTUAL cuboid dimensions (not auto-fit)
-    // Use the maximum dimension of the bounding box to determine appropriate distance
-    const maxDimension = Math.max(Math.abs(boxSize.x), Math.abs(boxSize.y), Math.abs(boxSize.z));
-
-    // Ensure we have a valid dimension
-    if (maxDimension > 0 && Number.isFinite(maxDimension)) {
-      // Calculate camera distance to show the cuboid with appropriate padding
-      // Formula: distance = (maxDimension / 2) / tan(fov/2) * paddingFactor
-      const fovRad = (60 * Math.PI) / 180; // Camera FOV in radians
-      const paddingFactor = 2.0; // Increased padding for better view
-      const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
-      cameraStateRef.current.distance = baseDistance * paddingFactor;
-
-      // Clamp distance to reasonable bounds
-      cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, cameraStateRef.current.distance));
-    } else {
-      // Fallback to a reasonable default distance
-      // console.warn('Local_View: Invalid maxDimension, using default camera distance');
-      cameraStateRef.current.distance = 0.5;
-    }
-
-    // Reset camera rotation to a good viewing angle
-    cameraStateRef.current.rotation = { x: 0.5, y: 0.5 };
-
-    console.log(`Local_View: Geometry centered at origin (offset: ${centerOffset.x.toFixed(4)}, ${centerOffset.y.toFixed(4)}, ${centerOffset.z.toFixed(4)})`);
-    console.log(`Local_View: Camera distance: ${cameraStateRef.current.distance.toFixed(4)} (based on max dimension: ${maxDimension.toFixed(4)})`);
-
-    // Store initial camera state for reset functionality
-    initialCameraStateRef.current = {
-      rotation: { ...cameraStateRef.current.rotation },
-      distance: cameraStateRef.current.distance,
-      panOffset: { ...cameraStateRef.current.panOffset }
-    };
-
-    updateCameraPosition();
-    updateLighting();
-
-    // Force multiple renders to ensure visualization is displayed immediately
-    if (rendererRef.current && cameraRef.current && sceneRef.current) {
-      // Update camera and lighting first
+      // Frame the camera once for this region (don't disturb it on channel edits).
+      cameraStateRef.current.panOffset = { x: 0, y: 0, z: 0 };
+      const maxDimension = Math.max(Math.abs(boxSize.x), Math.abs(boxSize.y), Math.abs(boxSize.z));
+      if (maxDimension > 0 && Number.isFinite(maxDimension)) {
+        const fovRad = (60 * Math.PI) / 180;
+        const baseDistance = (maxDimension / 2) / Math.tan(fovRad / 2);
+        cameraStateRef.current.distance = Math.max(0.1, Math.min(10.0, baseDistance * 2.0));
+      } else {
+        cameraStateRef.current.distance = 0.5;
+      }
+      cameraStateRef.current.rotation = { x: 0.5, y: 0.5 };
+      initialCameraStateRef.current = {
+        rotation: { ...cameraStateRef.current.rotation },
+        distance: cameraStateRef.current.distance,
+        panOffset: { ...cameraStateRef.current.panOffset }
+      };
       updateCameraPosition();
       updateLighting();
 
-      // Render immediately
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
-
-      // Also render on next frame to ensure it's visible
-      requestAnimationFrame(() => {
-        if (rendererRef.current && cameraRef.current && sceneRef.current) {
-          updateCameraPosition();
-          updateLighting();
-          rendererRef.current.render(sceneRef.current, cameraRef.current);
-
-          // One more render after a short delay to ensure everything is displayed
-          setTimeout(() => {
-            if (rendererRef.current && cameraRef.current && sceneRef.current) {
-              rendererRef.current.render(sceneRef.current, cameraRef.current);
-            }
-          }, 50);
-        }
-      });
+      regionCtxRef.current = {
+        regionSig,
+        bounds,
+        scaling,
+        centerOffset: { x: boxCenter.x, y: boxCenter.y, z: boxCenter.z }
+      };
     }
 
-    console.log('Local_View: Camera positioned at distance', cameraStateRef.current.distance, 'looking at', boxCenter);
-    console.log(`Local_View: Visualization complete - ${meshCount} meshes added to scene, ${totalCellCount} total cells`);
-    console.log(`Local_View: Scene children count: ${sceneRef.current.children.length}`);
-    console.log(`Local_View: Voxel meshes count: ${voxelMeshesRef.current.length}`);
-    console.log(`Local_View: Renderer exists:`, !!rendererRef.current);
-    console.log(`Local_View: Camera exists:`, !!cameraRef.current);
+    const { bounds, scaling, centerOffset } = regionCtxRef.current;
 
-    // Log mesh details for debugging
-    voxelMeshesRef.current.forEach((mesh, idx) => {
-      console.log(`Local_View: Mesh ${idx}: visible=${mesh.visible}, position=`, mesh.position, `instances=${mesh.geometry.instanceCount}, inScene=${sceneRef.current.children.includes(mesh)}`);
+    // --- Diff channels against what's already rendered ----------------------
+    const desired = new Map();
+    visibleChannels.forEach((c) => desired.set(c.channelIndex, c));
+
+    // Remove channels that are no longer present/visible.
+    channelMeshes.forEach((entry, idx) => {
+      if (!desired.has(idx)) {
+        dropMesh(entry.mesh);
+        channelMeshes.delete(idx);
+      }
     });
 
-    // Verify renderer is working
-    if (rendererRef.current && rendererRef.current.domElement) {
-      console.log(`Local_View: Renderer canvas size: ${rendererRef.current.domElement.width}x${rendererRef.current.domElement.height}`);
-      console.log(`Local_View: Renderer canvas visible:`, rendererRef.current.domElement.offsetWidth > 0 && rendererRef.current.domElement.offsetHeight > 0);
+    // Determine which channels actually need (re)building.
+    const toBuild = [];
+    desired.forEach((channelConfig, idx) => {
+      const sig = channelSignature(channelConfig);
+      const existing = channelMeshes.get(idx);
+      if (!existing) {
+        toBuild.push({ channelConfig, idx, sig });
+      } else if (existing.signature !== sig) {
+        dropMesh(existing.mesh);
+        channelMeshes.delete(idx);
+        toBuild.push({ channelConfig, idx, sig });
+      }
+      // else: unchanged → leave the existing mesh in place
+    });
+
+    syncState();
+    renderNow();
+
+    // Build only the needed channels, yielding between each so the UI stays
+    // responsive and already-rendered markers remain visible throughout.
+    for (const { channelConfig, idx, sig } of toBuild) {
+      if (token !== renderTokenRef.current) return; // superseded by a newer run
+      try {
+        const channelData = await loadChannelData(idx);
+        if (token !== renderTokenRef.current) return;
+        if (!channelData) continue;
+
+        const mesh = createRegionVisualization(channelData, channelConfig, bounds, scene, scaling, centerOffset);
+        if (mesh) {
+          mesh.visible = true;
+          mesh.frustumCulled = false;
+          scene.add(mesh);
+          channelMeshes.set(idx, { mesh, signature: sig });
+        }
+      } catch (error) {
+        console.error(`Local_View: Error building channel ${idx}:`, error);
+      }
+
+      syncState();
+      renderNow();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
     }
+
+    syncState();
+    renderNow();
   };
 
   // Setup Three.js scene
@@ -794,13 +691,29 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
     // If no selection, clear visualization
     if (!selectedRegionData || !selectedRegionData.bounds) {
       console.log('Local_View: No selected region data, clearing visualization');
-      if (sceneRef.current) {
-        voxelMeshesRef.current.forEach(mesh => {
-          sceneRef.current.remove(mesh);
-          if (mesh.geometry) mesh.geometry.dispose();
-          if (mesh.material) mesh.material.dispose();
+      renderTokenRef.current += 1; // cancel any in-flight incremental build
+      const scene = sceneRef.current;
+      if (scene) {
+        channelMeshesRef.current.forEach(({ mesh }) => {
+          if (mesh) {
+            if (scene.children.includes(mesh)) scene.remove(mesh);
+            if (mesh.geometry) mesh.geometry.dispose();
+            if (mesh.material) mesh.material.dispose();
+          }
         });
+        channelMeshesRef.current.clear();
+        if (boundingBoxRef.current) {
+          if (scene.children.includes(boundingBoxRef.current)) scene.remove(boundingBoxRef.current);
+          boundingBoxRef.current.geometry?.dispose();
+          boundingBoxRef.current.material?.dispose();
+          boundingBoxRef.current = null;
+        }
+        if (axesHelperRef.current) {
+          if (scene.children.includes(axesHelperRef.current)) scene.remove(axesHelperRef.current);
+          axesHelperRef.current = null;
+        }
         voxelMeshesRef.current = [];
+        regionCtxRef.current = null;
         setCellCount(0);
       }
       return;
@@ -1022,9 +935,11 @@ const LocalViewContent = ({ selectedRegionData, channels = [], onCloseTab, regio
 };
 
 // Main wrapper component with tabs support - UI similar to Graph Panel
-const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], onRemoveSelection, onClearAllSelections, onToggleMaximize, isMaximized = false }) => {
+const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], onRemoveSelection, onClearAllSelections, onRestoreSelections, onToggleMaximize, isMaximized = false }) => {
   // Support both array and single selection for backward compatibility
   const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
+  const selectedDataRef = useRef(selectedRegionsData);
+  useEffect(() => { selectedDataRef.current = selectedRegionsData; }, [selectedRegionsData]);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [closedTabIds, setClosedTabIds] = useState(new Set());
 
@@ -1060,6 +975,8 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
   useEffect(() => { visibleRegionsRef.current = visibleRegions; }, [visibleRegions]);
   const visibleCountRef = useRef(visibleRegions.length);
   useEffect(() => { visibleCountRef.current = visibleRegions.length; }, [visibleRegions]);
+  const channelsRef = useRef(channels);
+  useEffect(() => { channelsRef.current = channels; }, [channels]);
 
   useEffect(() => {
     const resolveTarget = (box, index) => {
@@ -1086,13 +1003,45 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
         if (target === null) return { message: 'Specify which box to close (e.g. box 2).' };
         const region = visibleRegionsRef.current[target];
         if (!region) return { message: 'No such box.' };
+        const prevData = (selectedDataRef.current || []).slice();
         if (onRemoveSelection) onRemoveSelection(region.id);
-        return { message: `Closed Box ${target + 1}` };
+        return {
+          message: `Closed Box ${target + 1}`,
+          undo: onRestoreSelections ? () => onRestoreSelections(prevData) : null
+        };
       },
       clearAllBoxes: () => {
         if (visibleCountRef.current === 0) return { message: 'No boxes to clear.' };
-        if (onClearAllSelections) { onClearAllSelections(); return { message: 'Cleared all boxes' }; }
-        return { message: 'Clear-all is not available.' };
+        if (!onClearAllSelections) return { message: 'Clear-all is not available.' };
+        const prevData = (selectedDataRef.current || []).slice();
+        onClearAllSelections();
+        return {
+          message: 'Cleared all boxes',
+          undo: onRestoreSelections ? () => onRestoreSelections(prevData) : null
+        };
+      },
+      // Read-only: compute deterministic stats for a box and hand them to the
+      // model (no state change). Powers "read → compute → act" via the loop.
+      getRegionStats: async ({ box, index } = {}) => {
+        if (visibleCountRef.current === 0) return { message: 'No boxes to read.' };
+        const target = resolveTarget(box, index);
+        if (target === null) return { message: 'Specify which box (e.g. box 2).' };
+        const region = visibleRegionsRef.current[target];
+        if (!region) return { message: 'No such box.' };
+        try {
+          const summary = await computeRegionSummary({ region, channels: channelsRef.current });
+          const engine = runEngine(summary);
+          const topMarkers = (summary.markers || []).slice(0, 8)
+            .map((m) => `${m.name}=${(m.relativeExpression ?? 0).toFixed(2)}`).join(', ') || 'none';
+          const phenos = (engine.topPhenotypes || []).slice(0, 3)
+            .map((p) => `${p.label} (${Math.round((p.proportion || 0) * 100)}%)`).join(', ') || 'none';
+          const detail =
+            `Box ${target + 1} stats — TME: ${engine.tme?.label || 'n/a'}; ` +
+            `top phenotypes: ${phenos}; top markers by relative expression: ${topMarkers}.`;
+          return { ok: true, message: `Read Box ${target + 1} stats`, detail };
+        } catch (e) {
+          return { message: `Could not compute Box ${target + 1} stats: ${e.message}` };
+        }
       }
     });
 
@@ -1104,10 +1053,10 @@ const Local_View = ({ selectedRegionsData, selectedRegionData, channels = [], on
     });
 
     return () => {
-      unregisterActions(['switchBox', 'closeBox', 'clearAllBoxes']);
+      unregisterActions(['switchBox', 'closeBox', 'clearAllBoxes', 'getRegionStats']);
       unregisterState('localView');
     };
-  }, [registerActions, unregisterActions, registerState, unregisterState, onRemoveSelection, onClearAllSelections]);
+  }, [registerActions, unregisterActions, registerState, unregisterState, onRemoveSelection, onClearAllSelections, onRestoreSelections]);
 
   // Update active tab when new selection is added or when tabs are closed
   useEffect(() => {
