@@ -15,42 +15,22 @@ const getSelectionColor = (index) => {
   return SELECTION_COLORS[index % SELECTION_COLORS.length];
 };
 
-// Helper functions moved outside component for performance
-// Calculate Pearson correlation
-const calculatePearsonCorrelation = (x, y) => {
-  if (!x || !y || x.length === 0 || y.length === 0 || x.length !== y.length) return 0;
-
-  // Sample if arrays are too large - INCREASED ACCURACY
-  // Sample if arrays are too large - INCREASED ACCURACY but balanced for performance
-  const MAX_SAMPLES = 10000; // Reduced from 50000 to 10000 for better performance while maintaining accuracy
-  const sampleSize = Math.min(MAX_SAMPLES, x.length);
-  const step = Math.max(1, Math.floor(x.length / sampleSize));
-  const sampledX = [];
-  const sampledY = [];
-
-  for (let i = 0; i < x.length; i += step) {
-    sampledX.push(x[i]);
-    sampledY.push(y[i]);
+const GRAPH_VIEW_META = {
+  composition: {
+    label: 'Cells',
+    accent: '#60a5fa',
+    activeBackground: 'rgba(96, 165, 250, 0.24)'
+  },
+  bar: {
+    label: 'Bar',
+    accent: '#facc15',
+    activeBackground: 'rgba(250, 204, 21, 0.22)'
+  },
+  violin: {
+    label: 'Violin',
+    accent: '#e879f9',
+    activeBackground: 'rgba(232, 121, 249, 0.22)'
   }
-
-  const n = sampledX.length;
-  const meanX = d3.mean(sampledX);
-  const meanY = d3.mean(sampledY);
-
-  let numerator = 0;
-  let sumXSq = 0;
-  let sumYSq = 0;
-
-  for (let i = 0; i < n; i++) {
-    const dx = sampledX[i] - meanX;
-    const dy = sampledY[i] - meanY;
-    numerator += dx * dy;
-    sumXSq += dx * dx;
-    sumYSq += dy * dy;
-  }
-
-  const denominator = Math.sqrt(sumXSq * sumYSq);
-  return denominator === 0 ? 0 : numerator / denominator;
 };
 
 // Kernel density estimation helpers
@@ -72,7 +52,7 @@ const kernelDensityEstimator = (kernel, X) => {
 const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], selectedRegions = [], onToggleMaximize, isMaximized = false }) => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
-  const [graphType, setGraphType] = useState('composition'); // 'composition', 'bar', 'heatmap', 'violin'
+  const [graphType, setGraphType] = useState('composition'); // 'composition', 'bar', 'violin'
   const [targetGraphType, setTargetGraphType] = useState('composition'); // For instant visual feedback
 
   // Agent tool + system awareness for the Graph Panel visualization.
@@ -81,12 +61,12 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
   useEffect(() => { graphTypeRef.current = graphType; }, [graphType]);
 
   useEffect(() => {
-    const VIEW_MAP = { cells: 'composition', composition: 'composition', bar: 'bar', heatmap: 'heatmap', violin: 'violin' };
-    const LABEL = { composition: 'cells', bar: 'bar', heatmap: 'heatmap', violin: 'violin' };
+    const VIEW_MAP = { cells: 'composition', composition: 'composition', bar: 'bar', violin: 'violin' };
+    const LABEL = { composition: 'cells', bar: 'bar', violin: 'violin' };
     registerActions({
       setGraphView: ({ view } = {}) => {
         const target = VIEW_MAP[(view || '').toLowerCase()];
-        if (!target) return { message: `Unknown graph view "${view}" (use cells/bar/heatmap/violin).` };
+        if (!target) return { message: `Unknown graph view "${view}" (use cells/bar/violin).` };
         const prev = graphTypeRef.current;
         setTargetGraphType(target);
         setGraphType(target);
@@ -113,7 +93,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
   const [error, setError] = useState(null);
   const chartRef = useRef(null);
 
-  // Heatmap comparison state
+  // Box comparison state used by the violin plot.
   const [box1Index, setBox1Index] = useState(0);
   const [box2Index, setBox2Index] = useState(1);
   const [showBox1Dropdown, setShowBox1Dropdown] = useState(false);
@@ -250,28 +230,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
         // Use region's channels if available, otherwise use global channels
         let channelsToAnalyze = channels.length > 0 ? channels : (regionData.channels || []);
 
-        // If we have selected regions and want co-expression, collect all unique channels from regions
-        if (graphType === 'heatmap' && selectedRegions.length > 0) {
-          const allRegionChannels = new Map();
-          selectedRegions.forEach(region => {
-            if (region.channels && Array.isArray(region.channels)) {
-              region.channels.forEach(channelConfig => {
-                if (!allRegionChannels.has(channelConfig.channelIndex)) {
-                  allRegionChannels.set(channelConfig.channelIndex, {
-                    ...channelConfig,
-                    visible: true
-                  });
-                }
-              });
-            }
-          });
-          if (allRegionChannels.size > 0) {
-            channelsToAnalyze = Array.from(allRegionChannels.values());
-          }
-        }
-
-        // Filter channels based on visibility (unless heatmap mode which forces visibility)
-        const validChannels = channelsToAnalyze.filter(c => c.visible !== false || graphType === 'heatmap');
+        const validChannels = channelsToAnalyze.filter(c => c.visible !== false);
 
         if (validChannels.length === 0) {
           setChannelStats(null);
@@ -361,7 +320,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
     } finally {
       setLoading(false);
     }
-  }, [selectedRegionData, selectedRegionsData, channels, selectedRegions, graphType, extractVoxelsInBounds, calculateStats, getBiomarkerName]);
+  }, [selectedRegionData, selectedRegionsData, channels, extractVoxelsInBounds, calculateStats, getBiomarkerName]);
 
   // Reset Graph Panel when selectedRegionsData becomes empty
   useEffect(() => {
@@ -598,231 +557,6 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
 
     chartRef.current = { tooltip };
   }, [channelStats]);
-
-  // Render Heatmap
-  const renderHeatmap = useCallback(() => {
-    if (!svgRef.current || !channelStats) return;
-
-    const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    // Margins - right margin adjusted for compare controls panel, slightly reduced for more heatmap width
-    const margin = { top: 40, right: 90, bottom: 120, left: 60 };
-
-    const chartWidth = width - margin.left - margin.right;
-    const chartHeight = height - margin.top - margin.bottom;
-
-    const g = svg
-      .attr('width', width)
-      .attr('height', height)
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`);
-
-    const statsArray = Object.values(channelStats);
-    if (statsArray.length === 0) return;
-
-    // Get regions array and check if we have multiple regions
-    const regionsArray = selectedRegionsData || (selectedRegionData ? [selectedRegionData] : []);
-    const hasMultipleRegions = regionsArray.length >= 2;
-
-    // Validate selected indices
-    const validBox1Index = Math.min(box1Index, regionsArray.length - 1);
-    const validBox2Index = hasMultipleRegions ? Math.min(box2Index, regionsArray.length - 1) : validBox1Index;
-
-    // Box colors from selection data (synced with Main_View wireframes and Local_View tabs)
-    const box1Color = regionsArray[validBox1Index]?.color || getSelectionColor(validBox1Index);
-    const box2Color = regionsArray[validBox2Index]?.color || getSelectionColor(validBox2Index);
-
-    // Compute correlation matrices for both boxes
-    const correlationMatrix1 = [];
-    const correlationMatrix2 = [];
-    const channelNames = statsArray.map(d => d.name);
-
-    for (let i = 0; i < statsArray.length; i++) {
-      correlationMatrix1[i] = [];
-      correlationMatrix2[i] = [];
-
-      for (let j = 0; j < statsArray.length; j++) {
-        if (i === j) {
-          correlationMatrix1[i][j] = 1.0;
-          correlationMatrix2[i][j] = 1.0;
-        } else {
-          // Get distributions from selected boxes
-          const dist1Box1 = statsArray[i].regions && statsArray[i].regions[validBox1Index]
-            ? statsArray[i].regions[validBox1Index].distribution
-            : statsArray[i].distribution;
-          const dist2Box1 = statsArray[j].regions && statsArray[j].regions[validBox1Index]
-            ? statsArray[j].regions[validBox1Index].distribution
-            : statsArray[j].distribution;
-
-          const dist1Box2 = statsArray[i].regions && statsArray[i].regions[validBox2Index]
-            ? statsArray[i].regions[validBox2Index].distribution
-            : dist1Box1;
-          const dist2Box2 = statsArray[j].regions && statsArray[j].regions[validBox2Index]
-            ? statsArray[j].regions[validBox2Index].distribution
-            : dist2Box1;
-
-          const correlation1 = calculatePearsonCorrelation(dist1Box1, dist2Box1);
-          const correlation2 = hasMultipleRegions && validBox1Index !== validBox2Index
-            ? calculatePearsonCorrelation(dist1Box2, dist2Box2)
-            : correlation1;
-
-          correlationMatrix1[i][j] = correlation1;
-          correlationMatrix2[i][j] = correlation2;
-        }
-      }
-    }
-
-    const cellSize = Math.min(chartWidth, chartHeight) / statsArray.length;
-    const xScale = d3.scaleBand()
-      .domain(channelNames)
-      .range([0, chartWidth])
-      .padding(0.05);
-
-    const yScale = d3.scaleBand()
-      .domain(channelNames)
-      .range([0, chartHeight])
-      .padding(0.05);
-
-    // Color scale: Viridis (0 to 1)
-    const colorScale = d3.scaleSequential(d3.interpolateViridis)
-      .domain([0, 1]);
-
-    // Determine if we should show comparison view
-    const showComparison = hasMultipleRegions && validBox1Index !== validBox2Index;
-
-    // Cells - split each cell into two halves for comparison, or full cell for single
-    for (let i = 0; i < statsArray.length; i++) {
-      for (let j = 0; j < statsArray.length; j++) {
-        const cellWidth = xScale.bandwidth();
-        const cellHeight = yScale.bandwidth();
-
-        if (showComparison) {
-          // Split cell into two halves with clear visual separation
-          // Left half: Box 1
-          g.append('rect')
-            .attr('x', xScale(channelNames[j]))
-            .attr('y', yScale(channelNames[i]))
-            .attr('width', cellWidth / 2 - 1) // Gap between cells
-            .attr('height', cellHeight)
-            .attr('fill', colorScale(correlationMatrix1[i][j]))
-            .attr('stroke', box1Color)
-            .attr('stroke-width', 2)
-            .on('mouseover', function (event) {
-              d3.select(this).attr('stroke-width', 3);
-              tooltip.style('opacity', 1)
-                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box ${validBox1Index + 1}<br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
-                .style('left', (event.pageX + 10) + 'px')
-                .style('top', (event.pageY - 10) + 'px');
-            })
-            .on('mouseout', function () {
-              d3.select(this).attr('stroke-width', 2);
-              tooltip.style('opacity', 0);
-            });
-
-          // Right half: Box 2
-          g.append('rect')
-            .attr('x', xScale(channelNames[j]) + cellWidth / 2 + 1) // Gap between cells
-            .attr('y', yScale(channelNames[i]))
-            .attr('width', cellWidth / 2 - 1)
-            .attr('height', cellHeight)
-            .attr('fill', colorScale(correlationMatrix2[i][j]))
-            .attr('stroke', box2Color)
-            .attr('stroke-width', 2)
-            .on('mouseover', function (event) {
-              d3.select(this).attr('stroke-width', 3);
-              tooltip.style('opacity', 1)
-                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box ${validBox2Index + 1}<br/>Correlation: ${correlationMatrix2[i][j].toFixed(3)}`)
-                .style('left', (event.pageX + 10) + 'px')
-                .style('top', (event.pageY - 10) + 'px');
-            })
-            .on('mouseout', function () {
-              d3.select(this).attr('stroke-width', 2);
-              tooltip.style('opacity', 0);
-            });
-        } else {
-          // Single box - show full cell with box color border
-          g.append('rect')
-            .attr('x', xScale(channelNames[j]))
-            .attr('y', yScale(channelNames[i]))
-            .attr('width', cellWidth)
-            .attr('height', cellHeight)
-            .attr('fill', colorScale(correlationMatrix1[i][j]))
-            .attr('stroke', box1Color)
-            .attr('stroke-width', 1)
-            .on('mouseover', function (event) {
-              d3.select(this).attr('stroke-width', 2);
-              tooltip.style('opacity', 1)
-                .html(`<strong>${channelNames[i]} × ${channelNames[j]}</strong><br/>Box ${validBox1Index + 1}<br/>Correlation: ${correlationMatrix1[i][j].toFixed(3)}`)
-                .style('left', (event.pageX + 10) + 'px')
-                .style('top', (event.pageY - 10) + 'px');
-            })
-            .on('mouseout', function () {
-              d3.select(this).attr('stroke-width', 1);
-              tooltip.style('opacity', 0);
-            });
-        }
-      }
-    }
-
-    // X axis
-    const xAxis = g.append('g')
-      .attr('transform', `translate(0,${chartHeight})`)
-      .call(d3.axisBottom(xScale));
-
-    // Horizontal labels
-    xAxis.selectAll('text')
-      .style('fill', '#fff')
-      .style('text-anchor', 'middle')
-      .attr('dy', '1em')
-      .style('font-size', channelNames.length > 15 ? '9px' : '11px');
-
-    // Y axis
-    const yAxis = g.append('g')
-      .call(d3.axisLeft(yScale));
-
-    yAxis.selectAll('text')
-      .style('fill', '#fff')
-      .style('font-size', channelNames.length > 15 ? '9px' : '11px');
-
-    // Title - shows which boxes are being compared
-    const titleText = showComparison
-      ? `Heatmap: Box ${validBox1Index + 1} vs Box ${validBox2Index + 1}`
-      : `Heatmap: Box ${validBox1Index + 1}`;
-    g.append('text')
-      .attr('x', chartWidth / 2)
-      .attr('y', -20)
-      .style('text-anchor', 'middle')
-      .style('fill', '#fff')
-      .style('font-size', '13px')
-      .style('font-weight', 'bold')
-      .text(titleText);
-
-    // Correlation scale is now rendered in React component on the right panel
-
-    // Tooltip
-    const tooltip = d3.select('body').append('div')
-      .attr('class', 'graph-tooltip')
-      .style('opacity', 0)
-      .style('position', 'absolute')
-      .style('background', 'rgba(0, 0, 0, 0.9)')
-      .style('color', '#fff')
-      .style('padding', '8px')
-      .style('border-radius', '4px')
-      .style('pointer-events', 'none')
-      .style('font-size', '12px')
-      .style('z-index', '10000');
-
-    chartRef.current = { tooltip };
-  }, [channelStats, box1Index, box2Index, selectedRegionsData, selectedRegionData]);
-
-  // Calculate Pearson correlation
-
 
   // Render Violin Plot (Enhanced with adaptive sizing and better statistics)
   const renderViolinPlot = useCallback(() => {
@@ -1194,9 +928,6 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       case 'bar':
         renderBarChart();
         break;
-      case 'heatmap':
-        renderHeatmap();
-        break;
       case 'violin':
         renderViolinPlot();
         break;
@@ -1208,7 +939,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
         chartRef.current.tooltip.remove();
       }
     };
-  }, [graphType, channelStats, loading, renderBarChart, renderHeatmap, renderViolinPlot]);
+  }, [graphType, channelStats, loading, renderBarChart, renderViolinPlot]);
 
   // Compute per-region cell-population composition for the 'composition' view.
   // Reuses the same grounded engine as the Tissue Intelligence panel, so the two
@@ -1299,6 +1030,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
       }
     };
   }, []);
+
+  const activeGraphAccent = GRAPH_VIEW_META[targetGraphType]?.accent || GRAPH_VIEW_META.composition.accent;
 
   return (
     <div
@@ -1393,7 +1126,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
             }}
             style={{
               padding: '4px 8px',
-              background: targetGraphType === 'composition' ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
+              background: targetGraphType === 'composition' ? GRAPH_VIEW_META.composition.activeBackground : 'transparent',
               border: 'none',
               borderRadius: '3px',
               cursor: 'pointer',
@@ -1406,12 +1139,12 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
             disabled={isCalculating}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="6" stroke={targetGraphType === 'composition' ? '#4ade80' : '#fff'} strokeWidth="1.5" opacity={targetGraphType === 'composition' ? 1 : 0.7} />
-              <path d="M8 2 A6 6 0 0 1 13.2 11 L8 8 Z" fill={targetGraphType === 'composition' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'composition' ? 0.9 : 0.5} />
+              <circle cx="8" cy="8" r="6" stroke={targetGraphType === 'composition' ? GRAPH_VIEW_META.composition.accent : '#fff'} strokeWidth="1.5" opacity={targetGraphType === 'composition' ? 1 : 0.7} />
+              <path d="M8 2 A6 6 0 0 1 13.2 11 L8 8 Z" fill={targetGraphType === 'composition' ? GRAPH_VIEW_META.composition.accent : '#fff'} opacity={targetGraphType === 'composition' ? 0.9 : 0.5} />
             </svg>
             <span style={{
               fontSize: '11px',
-              color: targetGraphType === 'composition' ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              color: targetGraphType === 'composition' ? GRAPH_VIEW_META.composition.accent : 'rgba(255,255,255,0.7)',
               fontWeight: targetGraphType === 'composition' ? '600' : '400'
             }}>Cells</span>
           </button>
@@ -1426,7 +1159,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
             }}
             style={{
               padding: '4px 8px',
-              background: targetGraphType === 'bar' ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
+              background: targetGraphType === 'bar' ? GRAPH_VIEW_META.bar.activeBackground : 'transparent',
               border: 'none',
               borderRadius: '3px',
               cursor: 'pointer',
@@ -1440,64 +1173,16 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
             disabled={isCalculating}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="12" width="2" height="2" fill={targetGraphType === 'bar' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
-              <rect x="5" y="8" width="2" height="6" fill={targetGraphType === 'bar' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
-              <rect x="8" y="4" width="2" height="10" fill={targetGraphType === 'bar' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
-              <rect x="11" y="6" width="2" height="8" fill={targetGraphType === 'bar' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
+              <rect x="2" y="12" width="2" height="2" fill={targetGraphType === 'bar' ? GRAPH_VIEW_META.bar.accent : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
+              <rect x="5" y="8" width="2" height="6" fill={targetGraphType === 'bar' ? GRAPH_VIEW_META.bar.accent : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
+              <rect x="8" y="4" width="2" height="10" fill={targetGraphType === 'bar' ? GRAPH_VIEW_META.bar.accent : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
+              <rect x="11" y="6" width="2" height="8" fill={targetGraphType === 'bar' ? GRAPH_VIEW_META.bar.accent : '#fff'} opacity={targetGraphType === 'bar' ? 1 : 0.7} />
             </svg>
             <span style={{
               fontSize: '11px',
-              color: targetGraphType === 'bar' ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              color: targetGraphType === 'bar' ? GRAPH_VIEW_META.bar.accent : 'rgba(255,255,255,0.7)',
               fontWeight: targetGraphType === 'bar' ? '600' : '400'
             }}>Bar</span>
-          </button>
-
-          <button
-            onClick={() => {
-              if (targetGraphType === 'heatmap') return;
-              setTargetGraphType('heatmap'); // Instant visual update
-              setIsCalculating(true);
-
-              // Force separate render to show loader and hide old chart
-              setTimeout(() => {
-                requestAnimationFrame(() => {
-                  setGraphType('heatmap');
-                  // Wait for render/calculation to finish
-                  setTimeout(() => setIsCalculating(false), 100);
-                });
-              }, 50);
-            }}
-            style={{
-              padding: '4px 8px',
-              background: targetGraphType === 'heatmap' ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
-              border: 'none',
-              borderRadius: '3px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'background-color 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out), opacity 200ms var(--ease-out)',
-              opacity: isCalculating && targetGraphType !== 'heatmap' ? 0.7 : 1
-            }}
-            title="Heatmap - Biomarker co-expression correlation"
-            disabled={isCalculating}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="2" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="6" y="2" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="10" y="2" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="2" y="6" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="6" y="6" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="10" y="6" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="2" y="10" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="6" y="10" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-              <rect x="10" y="10" width="3" height="3" fill={targetGraphType === 'heatmap' ? '#4ade80' : '#fff'} opacity={targetGraphType === 'heatmap' ? 1 : 0.7} />
-            </svg>
-            <span style={{
-              fontSize: '11px',
-              color: targetGraphType === 'heatmap' ? '#4ade80' : 'rgba(255,255,255,0.7)',
-              fontWeight: targetGraphType === 'heatmap' ? '600' : '400'
-            }}>Heatmap</span>
           </button>
 
           <button
@@ -1517,7 +1202,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
             }}
             style={{
               padding: '4px 8px',
-              background: targetGraphType === 'violin' ? 'rgba(74, 222, 128, 0.3)' : 'transparent',
+              background: targetGraphType === 'violin' ? GRAPH_VIEW_META.violin.activeBackground : 'transparent',
               border: 'none',
               borderRadius: '3px',
               cursor: 'pointer',
@@ -1532,13 +1217,13 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M8 2 L6 4 L5 6 L5 10 L6 12 L8 14 L10 12 L11 10 L11 6 L10 4 Z"
-                fill={targetGraphType === 'violin' ? '#4ade80' : '#fff'}
+                fill={targetGraphType === 'violin' ? GRAPH_VIEW_META.violin.accent : '#fff'}
                 opacity={targetGraphType === 'violin' ? 1 : 0.7} />
-              <line x1="8" y1="2" x2="8" y2="14" stroke={targetGraphType === 'violin' ? '#4ade80' : '#fff'} strokeWidth="1.5" opacity={targetGraphType === 'violin' ? 1 : 0.7} />
+              <line x1="8" y1="2" x2="8" y2="14" stroke={targetGraphType === 'violin' ? GRAPH_VIEW_META.violin.accent : '#fff'} strokeWidth="1.5" opacity={targetGraphType === 'violin' ? 1 : 0.7} />
             </svg>
             <span style={{
               fontSize: '11px',
-              color: targetGraphType === 'violin' ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              color: targetGraphType === 'violin' ? GRAPH_VIEW_META.violin.accent : 'rgba(255,255,255,0.7)',
               fontWeight: targetGraphType === 'violin' ? '600' : '400'
             }}>Violin</span>
           </button>
@@ -1596,7 +1281,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                   border: 1px solid rgba(255,255,255,0.5);
                 }
                 .face-front  { transform: rotateY(  0deg) translateZ(20px); background: #60a5fa77; }
-                .face-right  { transform: rotateY( 90deg) translateZ(20px); background: #4ade8077; }
+                .face-right  { transform: rotateY( 90deg) translateZ(20px); background: #22d3d877; }
                 .face-back   { transform: rotateY(180deg) translateZ(20px); background: #f472b677; }
                 .face-left   { transform: rotateY(-90deg) translateZ(20px); background: #facc1577; }
                 .face-top    { transform: rotateX( 90deg) translateZ(20px); background: #a78bfa77; }
@@ -1611,7 +1296,7 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                 <div className="cube-face face-top"></div>
                 <div className="cube-face face-bottom"></div>
               </div>
-              <div style={{ color: '#4ade80', fontSize: '13px', fontFamily: 'monospace', fontWeight: 'bold' }}>
+              <div style={{ color: activeGraphAccent, fontSize: '13px', fontFamily: 'monospace', fontWeight: 'bold' }}>
                 Analyzing Data...
               </div>
             </div>
@@ -1762,73 +1447,8 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
           />
         </div>
 
-        {/* Correlation Scale - Show only for single selection heatmaps and when not calculating */}
-        {graphType === 'heatmap' && selectedRegionsData && selectedRegionsData.length === 1 && !isCalculating && (
-          <div style={{
-            width: '70px',
-            padding: '8px 4px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            backgroundColor: 'transparent',
-            flexShrink: 0,
-            overflow: 'visible',
-            justifyContent: 'center'
-          }}>
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center'
-            }}>
-              <div style={{
-                fontSize: '9px',
-                color: 'rgba(255, 255, 255, 0.7)',
-                marginBottom: '4px',
-                fontWeight: '500'
-              }}>
-                Corr
-              </div>
-              <div style={{
-                width: '12px',
-                height: '180px',
-                background: 'linear-gradient(to bottom, #fde725 0%, #b8de29 10%, #6ece58 20%, #35b779 35%, #21918c 50%, #2c728e 65%, #31688e 80%, #3b528b 90%, #440154 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '2px',
-                position: 'relative'
-              }}>
-                {/* Scale labels */}
-                <div style={{
-                  position: 'absolute',
-                  right: '14px',
-                  top: '0',
-                  fontSize: '8px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1'
-                }}>1.0</div>
-                <div style={{
-                  position: 'absolute',
-                  right: '14px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  fontSize: '8px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1'
-                }}>0.5</div>
-                <div style={{
-                  position: 'absolute',
-                  right: '14px',
-                  bottom: '0',
-                  fontSize: '8px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1'
-                }}>0.0</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Selection Controls - Show for heatmap and violin with multiple selections and when not calculating */}
-        {(graphType === 'heatmap' || graphType === 'violin') && selectedRegionsData && selectedRegionsData.length >= 2 && !isCalculating && (
+        {/* Selection Controls - Show for violin with multiple selections and when not calculating */}
+        {graphType === 'violin' && selectedRegionsData && selectedRegionsData.length >= 2 && !isCalculating && (
           <div style={{
             width: '70px',
             padding: '8px 4px',
@@ -2042,59 +1662,6 @@ const Graph_Pannel = ({ selectedRegionData, selectedRegionsData, channels = [], 
                 )}
               </div>
 
-              {/* Correlation Scale - Only show for heatmap */}
-              {graphType === 'heatmap' && (
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  marginTop: '8px'
-                }}>
-                  <div style={{
-                    fontSize: '9px',
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    marginBottom: '4px',
-                    fontWeight: '500'
-                  }}>
-                    Corr
-                  </div>
-                  <div style={{
-                    width: '12px',
-                    height: '180px',
-                    background: 'linear-gradient(to bottom, #fde725 0%, #b8de29 10%, #6ece58 20%, #35b779 35%, #21918c 50%, #2c728e 65%, #31688e 80%, #3b528b 90%, #440154 100%)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '2px',
-                    position: 'relative'
-                  }}>
-                    {/* Scale labels */}
-                    <div style={{
-                      position: 'absolute',
-                      right: '14px',
-                      top: '0',
-                      fontSize: '8px',
-                      color: 'rgba(255, 255, 255, 0.7)',
-                      lineHeight: '1'
-                    }}>1.0</div>
-                    <div style={{
-                      position: 'absolute',
-                      right: '14px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      fontSize: '8px',
-                      color: 'rgba(255, 255, 255, 0.7)',
-                      lineHeight: '1'
-                    }}>0.5</div>
-                    <div style={{
-                      position: 'absolute',
-                      right: '14px',
-                      bottom: '0',
-                      fontSize: '8px',
-                      color: 'rgba(255, 255, 255, 0.7)',
-                      lineHeight: '1'
-                    }}>0.0</div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
