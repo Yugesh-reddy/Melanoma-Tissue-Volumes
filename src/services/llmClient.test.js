@@ -75,3 +75,16 @@ test('composeChatSystem includes grounding, peers, and the tool catalog', () => 
   assert.match(out, /```action/);
   assert.match(out, /enableChannels/);
 });
+
+test('composeChatSystem stamps the thread title so the model knows which context it is', () => {
+  const out = composeChatSystem({
+    kind: 'region',
+    title: 'Box 2',
+    grounding: 'GROUND-2',
+    peers: [{ title: 'Box 1', kind: 'region', grounding: 'PEER-1' }]
+  });
+  // The active context is identified by name (prevents confusing it with the
+  // viewer's active tab or with the Box 1 peer).
+  assert.match(out, /THIS CONVERSATION IS ABOUT: Box 2/);
+  assert.match(out, /GROUNDING DATA \(Box 2\)/);
+});
