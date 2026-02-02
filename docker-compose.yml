@@ -1,0 +1,26 @@
+# Run the app in a container:
+#   docker compose up --build
+# Then open http://localhost:3000
+#
+# - Source + the 4.8 GB visualization_data are bind-mounted (so the image stays
+#   small and edits show up on a browser refresh — HMR is off, same as running
+#   vite locally on the Drive mount).
+# - node_modules stays as a named volume so the container's linux binaries
+#   (esbuild/rollup) aren't clobbered by the host's. After changing dependencies,
+#   rebuild with:  docker compose up --build --force-recreate
+# - The LLM endpoint is a browser → host call: configure it in the app's Settings
+#   (e.g. http://localhost:11434/v1 for Ollama running on your host).
+
+services:
+  app:
+    build: .
+    container_name: melanoma-tissue-volumes
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app                 # live source + visualization_data (bind mount)
+      - node_modules:/app/node_modules
+    command: npx vite --host 0.0.0.0 --port 3000
+
+volumes:
+  node_modules:
