@@ -1,0 +1,27 @@
+# Keep the build context small — these are huge or irrelevant to the image.
+node_modules
+visualization_data
+dist
+build
+.git
+.gitignore
+
+# Datasets / downloads (not part of the web app)
+downloadData
+Data
+biomedvis-high-res
+*.zarr
+
+# Editor / OS cruft
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
+
+# Docker's own files
+Dockerfile
+docker-compose.yml
+.dockerignore
