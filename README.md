@@ -135,7 +135,7 @@ hallucination.
 graph TB
     subgraph Prep["Data preparation (Python, offline)"]
         A["Zarr volume<br/>(BiomedVis S3 bucket)"] --> B["download_dataset.py"]
-        B --> C["create_all_channels.py<br/>(via general.ipynb)"]
+        B --> C["create_all_channels.py<br/>(Zarr to .raw + .json)"]
         C --> D["visualization_data/<br/>70 x (.raw + .json)"]
     end
 
@@ -252,16 +252,19 @@ The Python helpers live in `downloadData/` and `create_all_channels.py`.
    ```
 
 3. Convert the Zarr volume into browser-ready `.raw` + `.json` files. The
-   conversion is designed to run inside `general.ipynb` after loading the volume
-   into a Dask array:
+   converter is self-contained: it loads the Zarr itself and writes all 70
+   channels to `visualization_data/`.
 
-   ```python
-   exec(open('create_all_channels.py').read())
-   create_all_channels_data(daskArray, downsample_factor=1)  # writes visualization_data/
+   ```bash
+   python create_all_channels.py
+   # useful options:
+   #   --downsample 2          smaller/faster (half resolution per axis)
+   #   --channels 19,27,37     only specific channels
+   #   --zarr-path <path>      custom Zarr location (default: biomedvis-6gb/0/3)
    ```
 
-   Use a larger `downsample_factor` to trade spatial resolution for a smaller
-   on-disk footprint and faster load times.
+   A larger `--downsample` trades spatial resolution for a smaller on-disk
+   footprint and faster load times.
 
 After this step you should have `visualization_data/channel_0_data.raw`,
 `channel_0_metadata.json`, and so on through channel 69.
