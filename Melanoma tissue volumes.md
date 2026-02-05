@@ -944,8 +944,7 @@ Every non-read-only action captures a **pre-action snapshot** and returns an und
 | File                               | Purpose                                           | Input                  | Output                                                              |
 | ---------------------------------- | ------------------------------------------------- | ---------------------- | ------------------------------------------------------------------- |
 | `downloadData/download_dataset.py` | Downloads the Zarr volume from S3                 | S3 bucket URL          | `./biomedvis-6gb/0/3/` (Zarr)                                       |
-| `create_all_channels.py`           | Extracts 70 channels from Zarr → `.raw` + `.json` | Zarr volume (via Dask) | `visualization_data/channel_N_data.raw` + `channel_N_metadata.json` |
-| `general.ipynb`                    | Jupyter notebook for data exploration             | Zarr volume            | Runs `create_all_channels.py`                                       |
+| `create_all_channels.py`           | Self-contained CLI: loads the Zarr (via Dask) and extracts all 70 channels → `.raw` + `.json` | `biomedvis-6gb/0/3` (Zarr) | `visualization_data/channel_N_data.raw` + `channel_N_metadata.json` |
 
 ### 9.3 Application Entry Points
 
