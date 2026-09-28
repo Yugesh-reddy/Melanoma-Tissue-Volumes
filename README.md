@@ -64,6 +64,22 @@ only ever explains numbers that already exist. This keeps the system from
 reading as a thin wrapper around a chat API and structurally limits
 hallucination.
 
+### Screenshots
+
+**Tumor and immune overview.** Two selected tissue boxes with the cell-population
+composition graph.
+
+![Tumor and immune channels with two selected boxes and a composition graph](assets/screenshots/tumor-immune-overview.png)
+
+**Local analysis.** An expanded tissue box beside its Tissue Intelligence
+summary.
+
+![Expanded Local View with a selected tissue box and Tissue Intelligence findings](assets/screenshots/local-view-tissue-intelligence.png)
+
+**Box comparison.** Tissue Intelligence comparing the two selected regions.
+
+<img src="assets/screenshots/two-box-comparison.png" alt="Tissue Intelligence comparison of Box 1 and Box 2" width="360">
+
 ---
 
 ## 2. Feature overview
